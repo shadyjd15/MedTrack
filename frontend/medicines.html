@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Medicines — MedTrack</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarMount"></div>
+  <div class="main-area">
+    <div class="topbar">
+      <div>
+        <h1>Medicines</h1>
+        <div class="topbar-sub">All medicines from your prescriptions</div>
+      </div>
+      <button class="btn btn-primary" id="addMedBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add medicine
+      </button>
+    </div>
+    <div class="content">
+      <div class="search-bar">
+        <input class="search-main" type="text" id="qInput" placeholder="Search by name, composition, manufacturer, doctor or hospital…" />
+        <select id="activeFilter">
+          <option value="">All statuses</option>
+          <option value="true">Active only</option>
+          <option value="false">Inactive only</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" id="resetBtn">Reset</button>
+      </div>
+
+      <div class="med-list" id="medList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Medicine Modal -->
+<div class="modal-overlay" id="medModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="medModalTitle">Add medicine</h3>
+      <button class="btn btn-ghost btn-icon" onclick="closeMedModal()">✕</button>
+    </div>
+    <form id="medForm">
+      <div class="modal-body">
+
+        <div class="field field-spaced">
+          <label>Linked visit / prescription <span class="req">*</span></label>
+          <select id="m_prescription_id" required></select>
+          <div class="helptext">Don't see the visit? <a href="/visits.html">Add a doctor visit first</a>.</div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field field-spaced">
+            <label>Medicine name <span class="req">*</span></label>
+            <input type="text" id="m_name" required />
+          </div>
+          <div class="field field-spaced">
+            <label>Composition / active ingredient <span class="req">*</span></label>
+            <input type="text" id="m_composition" required placeholder="e.g. Paracetamol 500mg" />
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field field-spaced">
+            <label>Dose <span class="req">*</span></label>
+            <input type="text" id="m_dose" required placeholder="e.g. 1 tablet" />
+          </div>
+          <div class="field field-spaced">
+            <label>Frequency</label>
+            <input type="text" id="m_frequency" placeholder="e.g. Twice a day" />
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field field-spaced">
+            <label>Timing</label>
+            <input type="text" id="m_timing" placeholder="e.g. After food, 9am & 9pm" />
+          </div>
+          <div class="field field-spaced">
+            <label>Manufacturer / brand</label>
+            <input type="text" id="m_manufacturer" />
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field field-spaced">
+            <label>Start date</label>
+            <input type="date" id="m_start_date" />
+          </div>
+          <div class="field field-spaced">
+            <label>End date</label>
+            <input type="date" id="m_end_date" />
+          </div>
+        </div>
+
+        <div class="field field-spaced">
+          <label>Symptom tags</label>
+          <input type="text" id="m_tags" placeholder="e.g. fever, headache, cold (comma separated)" />
+        </div>
+
+        <div class="field field-spaced">
+          <label><input type="checkbox" id="m_is_active" checked style="width:auto;margin-right:6px;" />Currently active / being taken</label>
+        </div>
+
+        <div class="field field-spaced">
+          <label>Notes</label>
+          <textarea id="m_notes"></textarea>
+        </div>
+
+        <div class="field field-spaced">
+          <label>Medicine photo</label>
+          <input type="file" id="m_photo" accept="image/*" capture="environment" style="display:none;" />
+          <div class="file-drop" id="photoDrop">${'Tap to take a photo or upload an image of the medicine'}</div>
+          <img id="photoPreview" class="file-preview" style="display:none;" />
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeMedModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="medSaveBtn">Save medicine</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+Auth.requireAuth();
+mountSidebar("medicines");
+
+let editingId = null;
+let prescriptionsCache = [];
+
+const qInput = document.getElementById("qInput");
+const activeFilter = document.getElementById("activeFilter");
+let debounceTimer;
+qInput.addEventListener("input", () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(loadMedicines, 300); });
+activeFilter.addEventListener("change", loadMedicines);
+document.getElementById("resetBtn").addEventListener("click", () => { qInput.value=""; activeFilter.value=""; loadMedicines(); });
+
+function medRow(m) {
+  const statusBadge = m.is_active ? `<span class="badge badge-active">Active</span>` : `<span class="badge badge-inactive">Inactive</span>`;
+  const tags = (m.tags || []).map(t => `<span class="tag">${t.name}</span>`).join("");
+  return `
+  <div class="med-row">
+    <div class="med-thumb">${m.photo ? `<img src="${m.photo}"/>` : ICONS.pill}</div>
+    <div class="med-main">
+      <div class="med-name">${m.name} ${statusBadge}</div>
+      <div class="med-meta">${m.composition} · ${m.dose}${m.frequency ? " · "+m.frequency : ""}</div>
+      <div class="med-meta">Dr. ${m.doctor_name || "—"} · ${m.hospital_name || "—"} · ${fmtDate(m.visit_date)}</div>
+      <div class="chip-row">${tags}</div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-secondary btn-sm" onclick="openEditMed('${m.id}')">Edit</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteMed('${m.id}')">Delete</button>
+    </div>
+  </div>`;
+}
+
+async function loadMedicines() {
+  const list = document.getElementById("medList");
+  list.innerHTML = Array(3).fill('<div class="skeleton" style="height:64px;"></div>').join("");
+  try {
+    const params = {};
+    if (qInput.value.trim()) params.q = qInput.value.trim();
+    if (activeFilter.value) params.active_only = activeFilter.value;
+    const meds = await Api.listMedicines(params);
+    if (!meds.length) {
+      list.innerHTML = `<div class="empty-state">${ICONS.pill}<div>No medicines found. Try adjusting filters or add a new one.</div></div>`;
+      return;
+    }
+    list.innerHTML = meds.map(medRow).join("");
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+async function loadPrescriptionsIntoSelect(selectedId = null) {
+  const sel = document.getElementById("m_prescription_id");
+  try {
+    prescriptionsCache = await Api.listPrescriptions();
+    if (!prescriptionsCache.length) {
+      sel.innerHTML = `<option value="">No visits yet — add one first</option>`;
+      return;
+    }
+    sel.innerHTML = prescriptionsCache.map(p =>
+      `<option value="${p.id}">${fmtDate(p.visit_date)} — Dr. ${p.doctor_name} (${p.hospital_name})</option>`
+    ).join("");
+    if (selectedId) sel.value = selectedId;
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+function openAddMed() {
+  editingId = null;
+  document.getElementById("medModalTitle").textContent = "Add medicine";
+  document.getElementById("medForm").reset();
+  document.getElementById("photoPreview").style.display = "none";
+  document.getElementById("m_is_active").checked = true;
+  loadPrescriptionsIntoSelect();
+  document.getElementById("medModal").style.display = "flex";
+}
+
+async function openEditMed(id) {
+  try {
+    const meds = await Api.listMedicines({});
+    const m = meds.find(x => x.id === id);
+    if (!m) return;
+    editingId = id;
+    document.getElementById("medModalTitle").textContent = "Edit medicine";
+    await loadPrescriptionsIntoSelect(m.prescription_id);
+    document.getElementById("m_name").value = m.name;
+    document.getElementById("m_composition").value = m.composition;
+    document.getElementById("m_dose").value = m.dose;
+    document.getElementById("m_frequency").value = m.frequency || "";
+    document.getElementById("m_timing").value = m.timing || "";
+    document.getElementById("m_manufacturer").value = m.manufacturer || "";
+    document.getElementById("m_start_date").value = m.start_date || "";
+    document.getElementById("m_end_date").value = m.end_date || "";
+    document.getElementById("m_tags").value = (m.tags || []).map(t => t.name).join(", ");
+    document.getElementById("m_is_active").checked = m.is_active;
+    document.getElementById("m_notes").value = m.notes || "";
+    const preview = document.getElementById("photoPreview");
+    if (m.photo) { preview.src = m.photo; preview.style.display = "block"; } else { preview.style.display = "none"; }
+    document.getElementById("medModal").style.display = "flex";
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+function closeMedModal() { document.getElementById("medModal").style.display = "none"; }
+
+document.getElementById("addMedBtn").addEventListener("click", openAddMed);
+
+document.getElementById("photoDrop").addEventListener("click", () => document.getElementById("m_photo").click());
+document.getElementById("m_photo").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const preview = document.getElementById("photoPreview");
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = "block";
+});
+
+document.getElementById("medForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const prescriptionId = document.getElementById("m_prescription_id").value;
+  if (!prescriptionId) { showToast("Please select a linked visit", "error"); return; }
+  const btn = document.getElementById("medSaveBtn");
+  btn.disabled = true;
+
+  try {
+    if (!editingId) {
+      const fd = new FormData();
+      fd.append("prescription_id", prescriptionId);
+      fd.append("name", document.getElementById("m_name").value);
+      fd.append("composition", document.getElementById("m_composition").value);
+      fd.append("dose", document.getElementById("m_dose").value);
+      fd.append("frequency", document.getElementById("m_frequency").value);
+      fd.append("timing", document.getElementById("m_timing").value);
+      fd.append("manufacturer", document.getElementById("m_manufacturer").value);
+      fd.append("start_date", document.getElementById("m_start_date").value || "");
+      fd.append("end_date", document.getElementById("m_end_date").value || "");
+      fd.append("is_active", document.getElementById("m_is_active").checked);
+      fd.append("notes", document.getElementById("m_notes").value);
+      fd.append("tags", document.getElementById("m_tags").value);
+      const photoFile = document.getElementById("m_photo").files[0];
+      if (photoFile) fd.append("photo", photoFile);
+      await Api.createMedicine(fd);
+      showToast("Medicine added", "success");
+    } else {
+      const payload = {
+        name: document.getElementById("m_name").value,
+        composition: document.getElementById("m_composition").value,
+        dose: document.getElementById("m_dose").value,
+        frequency: document.getElementById("m_frequency").value,
+        timing: document.getElementById("m_timing").value,
+        manufacturer: document.getElementById("m_manufacturer").value,
+        start_date: document.getElementById("m_start_date").value || null,
+        end_date: document.getElementById("m_end_date").value || null,
+        is_active: document.getElementById("m_is_active").checked,
+        notes: document.getElementById("m_notes").value,
+        tags: document.getElementById("m_tags").value.split(",").map(s => s.trim()).filter(Boolean),
+      };
+      await Api.updateMedicine(editingId, payload);
+      const photoFile = document.getElementById("m_photo").files[0];
+      if (photoFile) {
+        const fd = new FormData();
+        fd.append("photo", photoFile);
+        await Api.uploadMedicinePhoto(editingId, fd);
+      }
+      showToast("Medicine updated", "success");
+    }
+    closeMedModal();
+    loadMedicines();
+  } catch (err) {
+    showToast(err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+async function deleteMed(id) {
+  if (!confirm("Delete this medicine? This cannot be undone.")) return;
+  try {
+    await Api.deleteMedicine(id);
+    showToast("Medicine deleted", "success");
+    loadMedicines();
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+loadMedicines();
+
+// support ?action=add deep link from dashboard
+if (new URLSearchParams(window.location.search).get("action") === "add") {
+  openAddMed();
+}
+</script>
+</body>
+</html>

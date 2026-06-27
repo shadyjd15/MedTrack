@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MedTrack — Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="login-screen">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="logo-mark" style="width:38px;height:38px;border-radius:11px;font-size:17px;">M</div>
+      </div>
+      <h2>Welcome back</h2>
+      <p class="sub">Sign in to manage your medications and prescriptions.</p>
+
+      <div class="login-error" id="loginError"></div>
+
+      <form id="loginForm">
+        <div class="field field-spaced">
+          <label>Username</label>
+          <input type="text" id="username" autocomplete="username" required />
+        </div>
+        <div class="field field-spaced">
+          <label>Password</label>
+          <input type="password" id="password" autocomplete="current-password" required />
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;" id="loginBtn">Sign in</button>
+      </form>
+      <p style="font-size:11.5px;color:var(--text-faint);margin-top:18px;text-align:center;">
+        New users are created by your administrator.
+      </p>
+    </div>
+  </div>
+
+<script src="/js/api.js"></script>
+<script>
+  if (Auth.getToken()) window.location.href = "/dashboard.html";
+
+  const form = document.getElementById("loginForm");
+  const errBox = document.getElementById("loginError");
+  const btn = document.getElementById("loginBtn");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errBox.style.display = "none";
+    btn.disabled = true;
+    btn.textContent = "Signing in…";
+    try {
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      const data = await Api.login(username, password);
+      Auth.setSession(data.access_token, {
+        user_id: data.user_id, username: data.username, full_name: data.full_name, role: data.role
+      });
+      window.location.href = "/dashboard.html";
+    } catch (err) {
+      errBox.textContent = err.message || "Login failed";
+      errBox.style.display = "block";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Sign in";
+    }
+  });
+</script>
+</body>
+</html>

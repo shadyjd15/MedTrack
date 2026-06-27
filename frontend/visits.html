@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Doctor Visits — MedTrack</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarMount"></div>
+  <div class="main-area">
+    <div class="topbar">
+      <div>
+        <h1>Doctor Visits</h1>
+        <div class="topbar-sub">Track every visit and its prescription</div>
+      </div>
+      <button class="btn btn-primary" id="addVisitBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add visit
+      </button>
+    </div>
+    <div class="content">
+      <div class="med-list" id="visitList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Visit Modal -->
+<div class="modal-overlay" id="visitModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add doctor visit</h3>
+      <button class="btn btn-ghost btn-icon" onclick="closeVisitModal()">✕</button>
+    </div>
+    <form id="visitForm">
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="field field-spaced">
+            <label>Doctor name <span class="req">*</span></label>
+            <input type="text" id="v_doctor" required />
+          </div>
+          <div class="field field-spaced">
+            <label>Hospital / clinic <span class="req">*</span></label>
+            <input type="text" id="v_hospital" required />
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="field field-spaced">
+            <label>Visit date <span class="req">*</span></label>
+            <input type="date" id="v_date" required />
+          </div>
+          <div class="field field-spaced">
+            <label>Next visit date</label>
+            <input type="date" id="v_next_date" />
+          </div>
+        </div>
+        <div class="field field-spaced">
+          <label>Notes</label>
+          <textarea id="v_notes" placeholder="Diagnosis, advice, follow-up instructions…"></textarea>
+        </div>
+        <div class="field field-spaced">
+          <label>Prescription photo / scan</label>
+          <input type="file" id="v_image" accept="image/*,.pdf" capture="environment" style="display:none;" />
+          <div class="file-drop" id="visitPhotoDrop">Tap to capture or upload the prescription</div>
+          <img id="visitPhotoPreview" class="file-preview" style="display:none;" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeVisitModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="visitSaveBtn">Save visit</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- View Visit Modal -->
+<div class="modal-overlay" id="viewModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="viewModalTitle">Visit details</h3>
+      <button class="btn btn-ghost btn-icon" onclick="document.getElementById('viewModal').style.display='none'">✕</button>
+    </div>
+    <div class="modal-body" id="viewModalBody"></div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+Auth.requireAuth();
+mountSidebar("visits");
+
+function visitRow(p) {
+  const medCount = (p.medicines || []).length;
+  return `
+  <div class="med-row">
+    <div class="med-thumb">${p.prescription_image ? `<img src="${p.prescription_image}"/>` : ICONS.prescription}</div>
+    <div class="med-main">
+      <div class="med-name">Dr. ${p.doctor_name}</div>
+      <div class="med-meta">${p.hospital_name} · ${fmtDate(p.visit_date)}${p.next_visit_date ? ` · Next visit: ${fmtDate(p.next_visit_date)}` : ""}</div>
+      <div class="med-meta">${medCount} medicine${medCount === 1 ? "" : "s"} recorded</div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-secondary btn-sm" onclick="viewVisit('${p.id}')">View</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteVisit('${p.id}')">Delete</button>
+    </div>
+  </div>`;
+}
+
+let visitsCache = [];
+
+async function loadVisits() {
+  const list = document.getElementById("visitList");
+  list.innerHTML = Array(3).fill('<div class="skeleton" style="height:64px;"></div>').join("");
+  try {
+    visitsCache = await Api.listPrescriptions();
+    if (!visitsCache.length) {
+      list.innerHTML = `<div class="empty-state">${ICONS.visits}<div>No visits recorded yet. Add your first doctor visit.</div></div>`;
+      return;
+    }
+    list.innerHTML = visitsCache.map(visitRow).join("");
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+function viewVisit(id) {
+  const p = visitsCache.find(v => v.id === id);
+  if (!p) return;
+  document.getElementById("viewModalTitle").textContent = `Dr. ${p.doctor_name} — ${fmtDate(p.visit_date)}`;
+  const meds = (p.medicines || []).map(m => `
+    <div class="med-row">
+      <div class="med-thumb">${m.photo ? `<img src="${m.photo}"/>` : ICONS.pill}</div>
+      <div class="med-main">
+        <div class="med-name">${m.name}</div>
+        <div class="med-meta">${m.composition} · ${m.dose}${m.frequency ? " · "+m.frequency : ""}</div>
+      </div>
+    </div>`).join("") || `<div class="empty-state">${ICONS.pill}<div>No medicines added for this visit yet.</div></div>`;
+
+  document.getElementById("viewModalBody").innerHTML = `
+    <p style="color:var(--text-soft);font-size:13px;"><strong>Hospital:</strong> ${p.hospital_name}</p>
+    ${p.next_visit_date ? `<p style="color:var(--text-soft);font-size:13px;"><strong>Next visit:</strong> ${fmtDate(p.next_visit_date)}</p>` : ""}
+    ${p.notes ? `<p style="color:var(--text-soft);font-size:13px;"><strong>Notes:</strong> ${p.notes}</p>` : ""}
+    ${p.prescription_image ? `<img src="${p.prescription_image}" style="max-width:100%;border-radius:10px;margin:10px 0;border:1px solid var(--border);" />` : ""}
+    <h4 style="margin:14px 0 8px;font-size:14px;">Medicines from this visit</h4>
+    <div class="med-list">${meds}</div>
+  `;
+  document.getElementById("viewModal").style.display = "flex";
+}
+
+async function deleteVisit(id) {
+  if (!confirm("Delete this visit and all its medicines? This cannot be undone.")) return;
+  try {
+    await Api.deletePrescription(id);
+    showToast("Visit deleted", "success");
+    loadVisits();
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+document.getElementById("addVisitBtn").addEventListener("click", () => {
+  document.getElementById("visitForm").reset();
+  document.getElementById("visitPhotoPreview").style.display = "none";
+  document.getElementById("visitModal").style.display = "flex";
+});
+function closeVisitModal() { document.getElementById("visitModal").style.display = "none"; }
+
+document.getElementById("visitPhotoDrop").addEventListener("click", () => document.getElementById("v_image").click());
+document.getElementById("v_image").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.type.startsWith("image/")) {
+    const preview = document.getElementById("visitPhotoPreview");
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+  }
+});
+
+document.getElementById("visitForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("visitSaveBtn");
+  btn.disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append("doctor_name", document.getElementById("v_doctor").value);
+    fd.append("hospital_name", document.getElementById("v_hospital").value);
+    fd.append("visit_date", document.getElementById("v_date").value);
+    if (document.getElementById("v_next_date").value) fd.append("next_visit_date", document.getElementById("v_next_date").value);
+    fd.append("notes", document.getElementById("v_notes").value);
+    const imgFile = document.getElementById("v_image").files[0];
+    if (imgFile) fd.append("prescription_image", imgFile);
+    await Api.createPrescription(fd);
+    showToast("Visit added", "success");
+    closeVisitModal();
+    loadVisits();
+  } catch (err) { showToast(err.message, "error"); }
+  finally { btn.disabled = false; }
+});
+
+loadVisits();
+</script>
+</body>
+</html>

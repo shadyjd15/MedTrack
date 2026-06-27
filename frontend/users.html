@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Manage Users — MedTrack</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarMount"></div>
+  <div class="main-area">
+    <div class="topbar">
+      <div>
+        <h1>Manage Users</h1>
+        <div class="topbar-sub">Create and manage logins for patients/family members</div>
+      </div>
+      <button class="btn btn-primary" id="addUserBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add user
+      </button>
+    </div>
+    <div class="content">
+      <div class="card">
+        <table class="data-table">
+          <thead>
+            <tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr>
+          </thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="userModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="userModalTitle">Add user</h3>
+      <button class="btn btn-ghost btn-icon" onclick="closeUserModal()">✕</button>
+    </div>
+    <form id="userForm">
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="field field-spaced">
+            <label>Full name</label>
+            <input type="text" id="u_fullname" />
+          </div>
+          <div class="field field-spaced">
+            <label>Email</label>
+            <input type="text" id="u_email" />
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="field field-spaced">
+            <label>Username <span class="req">*</span></label>
+            <input type="text" id="u_username" required />
+          </div>
+          <div class="field field-spaced">
+            <label id="u_password_label">Password <span class="req">*</span></label>
+            <input type="password" id="u_password" />
+          </div>
+        </div>
+        <div class="field field-spaced">
+          <label>Role</label>
+          <select id="u_role">
+            <option value="user">Standard user</option>
+            <option value="admin">Administrator</option>
+          </select>
+        </div>
+        <div class="field field-spaced" id="u_active_field" style="display:none;">
+          <label><input type="checkbox" id="u_active" style="width:auto;margin-right:6px;" />Account active</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeUserModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="userSaveBtn">Save user</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+Auth.requireAuth();
+if (!Auth.isAdmin()) window.location.href = "/dashboard.html";
+mountSidebar("users");
+
+let editingUserId = null;
+
+function userRow(u) {
+  return `<tr>
+    <td>${u.full_name || "—"}</td>
+    <td>${u.username}</td>
+    <td><span class="badge ${u.role === 'admin' ? 'badge-active' : 'badge-inactive'}">${u.role}</span></td>
+    <td>${u.is_active ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Disabled</span>'}</td>
+    <td>${fmtDate(u.created_at)}</td>
+    <td style="text-align:right;">
+      <button class="btn btn-secondary btn-sm" onclick='openEditUser(${JSON.stringify(u).replace(/'/g, "&apos;")})'>Edit</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">Delete</button>
+    </td>
+  </tr>`;
+}
+
+async function loadUsers() {
+  try {
+    const users = await Api.listUsers();
+    document.getElementById("usersBody").innerHTML = users.map(userRow).join("");
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+function openAddUser() {
+  editingUserId = null;
+  document.getElementById("userModalTitle").textContent = "Add user";
+  document.getElementById("userForm").reset();
+  document.getElementById("u_password").required = true;
+  document.getElementById("u_password_label").innerHTML = "Password <span class='req'>*</span>";
+  document.getElementById("u_active_field").style.display = "none";
+  document.getElementById("userModal").style.display = "flex";
+}
+
+function openEditUser(u) {
+  editingUserId = u.id;
+  document.getElementById("userModalTitle").textContent = "Edit user";
+  document.getElementById("u_fullname").value = u.full_name || "";
+  document.getElementById("u_email").value = u.email || "";
+  document.getElementById("u_username").value = u.username;
+  document.getElementById("u_username").disabled = true;
+  document.getElementById("u_password").value = "";
+  document.getElementById("u_password").required = false;
+  document.getElementById("u_password_label").innerHTML = "New password (leave blank to keep current)";
+  document.getElementById("u_role").value = u.role;
+  document.getElementById("u_active_field").style.display = "block";
+  document.getElementById("u_active").checked = u.is_active;
+  document.getElementById("userModal").style.display = "flex";
+}
+
+function closeUserModal() {
+  document.getElementById("userModal").style.display = "none";
+  document.getElementById("u_username").disabled = false;
+}
+
+document.getElementById("addUserBtn").addEventListener("click", openAddUser);
+
+document.getElementById("userForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("userSaveBtn");
+  btn.disabled = true;
+  try {
+    if (!editingUserId) {
+      await Api.createUser({
+        username: document.getElementById("u_username").value,
+        password: document.getElementById("u_password").value,
+        full_name: document.getElementById("u_fullname").value,
+        email: document.getElementById("u_email").value,
+        role: document.getElementById("u_role").value,
+      });
+      showToast("User created", "success");
+    } else {
+      const payload = {
+        full_name: document.getElementById("u_fullname").value,
+        email: document.getElementById("u_email").value,
+        is_active: document.getElementById("u_active").checked,
+      };
+      const pw = document.getElementById("u_password").value;
+      if (pw) payload.password = pw;
+      await Api.updateUser(editingUserId, payload);
+      showToast("User updated", "success");
+    }
+    closeUserModal();
+    loadUsers();
+  } catch (err) { showToast(err.message, "error"); }
+  finally { btn.disabled = false; }
+});
+
+async function deleteUser(id) {
+  if (!confirm("Delete this user and all their data? This cannot be undone.")) return;
+  try {
+    await Api.deleteUser(id);
+    showToast("User deleted", "success");
+    loadUsers();
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+loadUsers();
+</script>
+</body>
+</html>

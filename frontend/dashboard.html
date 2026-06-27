@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — MedTrack</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarMount"></div>
+  <div class="main-area">
+    <div class="topbar">
+      <div>
+        <h1>Dashboard</h1>
+        <div class="topbar-sub">Overview of your medications and visits</div>
+      </div>
+      <a href="/medicines.html?action=add" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add medicine
+      </a>
+    </div>
+    <div class="content">
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:18px;" id="lowerGrid">
+        <div class="card">
+          <div class="card-header"><h3>Medicines ending soon</h3></div>
+          <div id="endingSoonList" class="med-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Next visit</h3></div>
+          <div id="nextVisitBox"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+Auth.requireAuth();
+mountSidebar("dashboard");
+
+function kpiCard(icon, color, value, label, foot) {
+  return `<div class="kpi-card">
+    <div class="kpi-icon" style="background:${color}22;color:${color};">${icon}</div>
+    <div class="kpi-value">${value}</div>
+    <div class="kpi-label">${label}</div>
+    ${foot ? `<div class="kpi-foot">${foot}</div>` : ""}
+  </div>`;
+}
+
+async function load() {
+  const grid = document.getElementById("kpiGrid");
+  grid.innerHTML = Array(4).fill('<div class="kpi-card"><div class="skeleton" style="height:70px;"></div></div>').join("");
+
+  try {
+    const s = await Api.dashboardStats();
+
+    grid.innerHTML = [
+      kpiCard(ICONS.pill, "#0F7A72", s.total_medicines, "Total medicines", `${s.active_medicines} currently active`),
+      kpiCard(ICONS.visits, "#C8801A", s.total_hospital_visits, "Hospital visits", s.distinct_hospitals ? `${s.distinct_hospitals} hospitals · ${s.distinct_doctors} doctors` : ""),
+      kpiCard(ICONS.prescription, "#0B5C56", fmtDate(s.last_visit_date), "Last visit date", s.last_visit_doctor ? `with Dr. ${s.last_visit_doctor}` : "No visits yet"),
+      kpiCard(ICONS.dashboard, "#C24545", s.next_medicine_name || "—", "Next medicine to take", s.next_medicine_time || ""),
+    ].join("");
+
+    const endingBox = document.getElementById("endingSoonList");
+    if (!s.medicines_ending_soon.length) {
+      endingBox.innerHTML = `<div class="empty-state">${ICONS.pill}<div>No medicines ending soon</div></div>`;
+    } else {
+      endingBox.innerHTML = s.medicines_ending_soon.map(m => `
+        <div class="med-row">
+          <div class="med-thumb">${m.photo ? `<img src="${m.photo}"/>` : ICONS.pill}</div>
+          <div class="med-main">
+            <div class="med-name">${m.name}</div>
+            <div class="med-meta">${m.composition} · ${m.dose} · ends ${fmtDate(m.end_date)}</div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    const nextVisitBox = document.getElementById("nextVisitBox");
+    if (s.next_visit_date) {
+      nextVisitBox.innerHTML = `
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div class="kpi-icon" style="background:#C8801A22;color:#C8801A;width:46px;height:46px;">${ICONS.visits}</div>
+          <div>
+            <div style="font-size:18px;font-weight:700;color:var(--navy);">${fmtDate(s.next_visit_date)}</div>
+            <div class="topbar-sub">Scheduled follow-up</div>
+          </div>
+        </div>`;
+    } else {
+      nextVisitBox.innerHTML = `<div class="empty-state">${ICONS.visits}<div>No upcoming visit scheduled</div></div>`;
+    }
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+load();
+</script>
+</body>
+</html>

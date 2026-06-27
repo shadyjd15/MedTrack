@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Search — MedTrack</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarMount"></div>
+  <div class="main-area">
+    <div class="topbar">
+      <div>
+        <h1>Search</h1>
+        <div class="topbar-sub">Find medicines by doctor, hospital, symptom, composition, or date</div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="card" style="margin-bottom:18px;">
+        <div class="form-grid">
+          <div class="field">
+            <label>Keyword (name, manufacturer)</label>
+            <input type="text" id="s_q" placeholder="e.g. Paracetamol" />
+          </div>
+          <div class="field">
+            <label>Composition</label>
+            <input type="text" id="s_composition" placeholder="e.g. Amoxicillin" />
+          </div>
+          <div class="field">
+            <label>Doctor</label>
+            <input type="text" id="s_doctor" placeholder="e.g. Sharma" />
+          </div>
+          <div class="field">
+            <label>Hospital</label>
+            <input type="text" id="s_hospital" placeholder="e.g. City Hospital" />
+          </div>
+          <div class="field">
+            <label>Symptom tag</label>
+            <input type="text" id="s_tag" placeholder="e.g. fever" />
+          </div>
+          <div class="field">
+            <label>Status</label>
+            <select id="s_active">
+              <option value="">Any</option>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Visit from date</label>
+            <input type="date" id="s_from" />
+          </div>
+          <div class="field">
+            <label>Visit to date</label>
+            <input type="date" id="s_to" />
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+          <button class="btn btn-primary" id="searchBtn">Search</button>
+          <button class="btn btn-secondary" id="clearBtn">Clear filters</button>
+          <button class="btn btn-secondary" id="altBtn" title="Find alternate brands with the same composition">Find alternates by composition</button>
+        </div>
+      </div>
+
+      <div class="med-list" id="resultsList"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+Auth.requireAuth();
+mountSidebar("search");
+
+function medRow(m) {
+  const statusBadge = m.is_active ? `<span class="badge badge-active">Active</span>` : `<span class="badge badge-inactive">Inactive</span>`;
+  const tags = (m.tags || []).map(t => `<span class="tag">${t.name}</span>`).join("");
+  return `
+  <div class="med-row">
+    <div class="med-thumb">${m.photo ? `<img src="${m.photo}"/>` : ICONS.pill}</div>
+    <div class="med-main">
+      <div class="med-name">${m.name} ${statusBadge}</div>
+      <div class="med-meta">${m.composition} · ${m.dose}${m.manufacturer ? " · "+m.manufacturer : ""}</div>
+      <div class="med-meta">Dr. ${m.doctor_name || "—"} · ${m.hospital_name || "—"} · ${fmtDate(m.visit_date)}</div>
+      <div class="chip-row">${tags}</div>
+    </div>
+  </div>`;
+}
+
+function renderResults(meds) {
+  const list = document.getElementById("resultsList");
+  if (!meds.length) {
+    list.innerHTML = `<div class="empty-state">${ICONS.search}<div>No medicines match your search.</div></div>`;
+    return;
+  }
+  list.innerHTML = meds.map(medRow).join("");
+}
+
+async function runSearch() {
+  const params = {
+    q: document.getElementById("s_q").value.trim(),
+    composition: document.getElementById("s_composition").value.trim(),
+    doctor: document.getElementById("s_doctor").value.trim(),
+    hospital: document.getElementById("s_hospital").value.trim(),
+    tag: document.getElementById("s_tag").value.trim(),
+    active_only: document.getElementById("s_active").value,
+    from_date: document.getElementById("s_from").value,
+    to_date: document.getElementById("s_to").value,
+  };
+  try {
+    const meds = await Api.listMedicines(params);
+    renderResults(meds);
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+document.getElementById("searchBtn").addEventListener("click", runSearch);
+document.getElementById("clearBtn").addEventListener("click", () => {
+  ["s_q","s_composition","s_doctor","s_hospital","s_tag","s_active","s_from","s_to"].forEach(id => document.getElementById(id).value = "");
+  runSearch();
+});
+document.getElementById("altBtn").addEventListener("click", async () => {
+  const comp = document.getElementById("s_composition").value.trim();
+  if (!comp) { showToast("Enter a composition first", "error"); return; }
+  try {
+    const meds = await Api.findByComposition(comp);
+    renderResults(meds);
+  } catch (err) { showToast(err.message, "error"); }
+});
+
+runSearch();
+</script>
+</body>
+</html>
