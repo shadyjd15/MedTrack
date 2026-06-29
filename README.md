@@ -1,8 +1,10 @@
 # MediCal
 
-A modern, self-hosted healthcare management platform for individuals and families to securely manage medications, prescriptions, doctor visits, laboratory results, vaccinations, allergies, and healthcare spending.
+A self-hosted medication, prescription and health-records tracker. An admin creates user logins (patients, caregivers, or other admins); patients log visits to doctors/hospitals (with cost & vitals), record medicines prescribed (with mandatory dose + composition so alternates can be found later), track lab tests/imaging, vaccinations and allergies, and get a dashboard with spending and health analytics. Caregivers can be linked to one or more patients and manage their records on their behalf.
 
 **Current version: 1.2.0**
+
+See [`CHANGELOG.md`](./CHANGELOG.md) for the full history of every release.
 
 ## Stack
 - **Backend:** FastAPI + SQLAlchemy + PostgreSQL, JWT auth, file uploads on a Docker volume, Tesseract OCR, ReportLab PDF export, smtplib for outbound email.
@@ -144,6 +146,22 @@ medtrack/
     ├── css/style.css
     └── js/ (api.js, sidebar.js, theme.js)
 ```
+
+## Android app
+
+MediCal can be used as an Android app two ways:
+
+1. **Install as a PWA (already set up, works today)** — open the deployed site
+   in Chrome on Android and use "Add to Home screen" / the install prompt
+   (there's also an explicit "Install app" button under Settings → App). You
+   get a real home-screen icon, a full-screen window with no browser bar, and
+   basic offline shell caching, with zero extra infrastructure.
+2. **Real installable APK / Play Store app** — see `android-app/README.md`.
+   This wraps the same live deployment in a Capacitor native shell so it's a
+   genuine Android app with access to native camera/file APIs, while still
+   talking to your existing backend (no separate frontend to maintain).
+   Building it requires Node + Android Studio on a machine with internet
+   access — it isn't something that can be produced from source alone.
 
 ## Feature ideas not yet built
 

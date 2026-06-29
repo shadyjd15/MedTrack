@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Settings — MediCal</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#155DFD" />
+<link rel="apple-touch-icon" href="/assets/icons/icon-192.png" />
+<link rel="icon" href="/assets/icons/favicon-32.png" />
+<script src="/js/pwa.js"></script>
 <script src="/js/theme.js"></script>
 <link rel="stylesheet" href="/css/style.css" />
 </head>
@@ -18,116 +23,136 @@
         <div class="topbar-sub">Manage your account</div>
       </div>
     </div>
-    <div class="content" style="max-width:560px;">
-      <div class="card" style="margin-bottom:18px;">
-        <div class="card-header"><h3>Profile</h3></div>
-        <div id="profileBox" style="display:flex;align-items:center;gap:14px;">
-          <div class="user-avatar" style="width:50px;height:50px;font-size:17px;background:var(--teal-dark);" id="profAvatar"></div>
-          <div>
-            <div style="font-weight:700;font-size:15.5px;color:var(--navy);" id="profName"></div>
-            <div style="font-size:12.5px;color:var(--text-soft);" id="profMeta"></div>
+    <div class="content" style="max-width:1100px;">
+
+      <div class="settings-grid-compact" style="margin-bottom:18px;">
+
+        <div class="card">
+          <div class="card-header"><h3>Profile</h3></div>
+          <div id="profileBox" style="display:flex;align-items:center;gap:14px;">
+            <div class="user-avatar" style="width:50px;height:50px;font-size:17px;background:var(--teal-dark);" id="profAvatar"></div>
+            <div>
+              <div style="font-weight:700;font-size:15.5px;color:var(--navy);" id="profName"></div>
+              <div style="font-size:12.5px;color:var(--text-soft);" id="profMeta"></div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="card" style="margin-bottom:18px;">
-        <div class="card-header"><h3>Appearance</h3></div>
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div>
-            <div style="font-weight:600;font-size:13.5px;">Dark mode</div>
-            <div class="topbar-sub">Switch between light and dark themes</div>
+        <div class="card">
+          <div class="card-header"><h3>App</h3></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:600;font-size:13.5px;">Install on this device</div>
+              <div class="topbar-sub">Home-screen icon, full-screen view</div>
+            </div>
+            <button class="btn btn-primary pwa-install-btn" style="display:none;" onclick="triggerPwaInstall()">Install app</button>
           </div>
-          <button class="btn btn-secondary" id="appearanceToggleBtn"></button>
         </div>
-      </div>
 
-      <div class="card" style="margin-bottom:18px;">
-        <div class="card-header"><h3>Currency</h3></div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
-          <div>
-            <div style="font-weight:600;font-size:13.5px;">Preferred currency</div>
-            <div class="topbar-sub">Used for all cost and spending displays</div>
+        <div class="card">
+          <div class="card-header"><h3>Appearance</h3></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            <div>
+              <div style="font-weight:600;font-size:13.5px;">Dark mode</div>
+              <div class="topbar-sub">Light or dark theme</div>
+            </div>
+            <button class="btn btn-secondary" id="appearanceToggleBtn"></button>
           </div>
-          <select id="currencySelect" style="min-width:180px;">
-            <option value="USD">USD — US Dollar</option>
-            <option value="EUR">EUR — Euro</option>
-            <option value="GBP">GBP — British Pound</option>
-            <option value="SAR">SAR — Saudi Riyal</option>
-            <option value="AED">AED — UAE Dirham</option>
-            <option value="EGP">EGP — Egyptian Pound</option>
-            <option value="INR">INR — Indian Rupee</option>
-            <option value="PKR">PKR — Pakistani Rupee</option>
-            <option value="CAD">CAD — Canadian Dollar</option>
-            <option value="AUD">AUD — Australian Dollar</option>
-            <option value="JPY">JPY — Japanese Yen</option>
-          </select>
         </div>
+
+        <div class="card">
+          <div class="card-header"><h3>Currency</h3></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:600;font-size:13.5px;">Preferred currency</div>
+              <div class="topbar-sub">Used for cost displays</div>
+            </div>
+            <select id="currencySelect" style="min-width:150px;">
+              <option value="USD">USD — US Dollar</option>
+              <option value="EUR">EUR — Euro</option>
+              <option value="GBP">GBP — British Pound</option>
+              <option value="SAR">SAR — Saudi Riyal</option>
+              <option value="AED">AED — UAE Dirham</option>
+              <option value="EGP">EGP — Egyptian Pound</option>
+              <option value="INR">INR — Indian Rupee</option>
+              <option value="PKR">PKR — Pakistani Rupee</option>
+              <option value="CAD">CAD — Canadian Dollar</option>
+              <option value="AUD">AUD — Australian Dollar</option>
+              <option value="JPY">JPY — Japanese Yen</option>
+            </select>
+          </div>
+        </div>
+
       </div>
 
-      <div class="card" style="margin-bottom:18px;">
-        <div class="card-header"><h3>Change password</h3></div>
-        <form id="pwForm">
-          <div class="field field-spaced">
-            <label>New password</label>
-            <input type="password" id="newPassword" required minlength="4" />
-          </div>
-          <div class="field field-spaced">
-            <label>Confirm new password</label>
-            <input type="password" id="confirmPassword" required minlength="4" />
-          </div>
-          <button type="submit" class="btn btn-primary">Update password</button>
-        </form>
-      </div>
+      <div class="settings-grid-wide">
 
-      <div class="card" id="emailSettingsCard" style="display:none;">
-        <div class="card-header"><h3>Email (SMTP) — Admin only</h3></div>
-        <p class="topbar-sub" style="margin-bottom:14px;">Configure outbound email so MediCal can notify users on account creation and password changes. Works with Gmail, Yahoo, AOL, Outlook, or any SMTP server — most providers require an "app password" if you have 2FA enabled.</p>
-        <form id="smtpForm">
-          <div class="form-grid">
+        <div class="card">
+          <div class="card-header"><h3>Change password</h3></div>
+          <form id="pwForm">
             <div class="field field-spaced">
-              <label>SMTP host</label>
-              <input type="text" id="smtp_host" placeholder="smtp.gmail.com" />
+              <label>New password</label>
+              <input type="password" id="newPassword" required minlength="4" />
             </div>
             <div class="field field-spaced">
-              <label>Port</label>
-              <input type="number" id="smtp_port" placeholder="587" />
+              <label>Confirm new password</label>
+              <input type="password" id="confirmPassword" required minlength="4" />
             </div>
-          </div>
-          <div class="form-grid">
+            <button type="submit" class="btn btn-primary">Update password</button>
+          </form>
+        </div>
+
+        <div class="card" id="emailSettingsCard" style="display:none;">
+          <div class="card-header"><h3>Email (SMTP) — Admin only</h3></div>
+          <p class="topbar-sub" style="margin-bottom:14px;">Configure outbound email so MediCal can notify users on account creation and password changes. Works with Gmail, Yahoo, AOL, Outlook, or any SMTP server — most providers require an "app password" if you have 2FA enabled.</p>
+          <form id="smtpForm">
+            <div class="form-grid">
+              <div class="field field-spaced">
+                <label>SMTP host</label>
+                <input type="text" id="smtp_host" placeholder="smtp.gmail.com" />
+              </div>
+              <div class="field field-spaced">
+                <label>Port</label>
+                <input type="number" id="smtp_port" placeholder="587" />
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="field field-spaced">
+                <label>SMTP username</label>
+                <input type="text" id="smtp_username" placeholder="you@gmail.com" />
+              </div>
+              <div class="field field-spaced">
+                <label id="smtp_password_label">SMTP password / app password</label>
+                <input type="password" id="smtp_password" placeholder="(unchanged if left blank)" />
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="field field-spaced">
+                <label>From name</label>
+                <input type="text" id="smtp_from_name" placeholder="MediCal" />
+              </div>
+              <div class="field field-spaced">
+                <label>From email</label>
+                <input type="text" id="smtp_from_email" placeholder="noreply@yourdomain.com" />
+              </div>
+            </div>
             <div class="field field-spaced">
-              <label>SMTP username</label>
-              <input type="text" id="smtp_username" placeholder="you@gmail.com" />
+              <label><input type="checkbox" id="smtp_use_tls" style="width:auto;margin-right:6px;" checked />Use TLS (recommended, required by Gmail/Yahoo/AOL)</label>
             </div>
             <div class="field field-spaced">
-              <label id="smtp_password_label">SMTP password / app password</label>
-              <input type="password" id="smtp_password" placeholder="(unchanged if left blank)" />
-            </div>
-          </div>
-          <div class="form-grid">
-            <div class="field field-spaced">
-              <label>From name</label>
-              <input type="text" id="smtp_from_name" placeholder="MediCal" />
+              <label><input type="checkbox" id="smtp_notify_created" style="width:auto;margin-right:6px;" checked />Email new users their login details on account creation</label>
             </div>
             <div class="field field-spaced">
-              <label>From email</label>
-              <input type="text" id="smtp_from_email" placeholder="noreply@yourdomain.com" />
+              <label><input type="checkbox" id="smtp_notify_pw" style="width:auto;margin-right:6px;" checked />Email users when their password changes</label>
             </div>
-          </div>
-          <div class="field field-spaced">
-            <label><input type="checkbox" id="smtp_use_tls" style="width:auto;margin-right:6px;" checked />Use TLS (recommended, required by Gmail/Yahoo/AOL)</label>
-          </div>
-          <div class="field field-spaced">
-            <label><input type="checkbox" id="smtp_notify_created" style="width:auto;margin-right:6px;" checked />Email new users their login details on account creation</label>
-          </div>
-          <div class="field field-spaced">
-            <label><input type="checkbox" id="smtp_notify_pw" style="width:auto;margin-right:6px;" checked />Email users when their password changes</label>
-          </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;">
-            <button type="submit" class="btn btn-primary">Save email settings</button>
-            <input type="text" id="testEmailTo" placeholder="you@example.com" style="flex:1;min-width:180px;padding:9px 11px;border:1px solid var(--border);border-radius:6px;" />
-            <button type="button" class="btn btn-secondary" id="sendTestBtn">Send test email</button>
-          </div>
-        </form>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button type="submit" class="btn btn-primary">Save email settings</button>
+              <input type="text" id="testEmailTo" placeholder="you@example.com" style="flex:1;min-width:180px;padding:9px 11px;border:1px solid var(--border);border-radius:6px;" />
+              <button type="button" class="btn btn-secondary" id="sendTestBtn">Send test email</button>
+            </div>
+          </form>
+        </div>
+
       </div>
     </div>
   </div>
