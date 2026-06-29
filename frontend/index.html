@@ -33,7 +33,7 @@
         </div>
         <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;" id="loginBtn">Sign in</button>
       </form>
-      <p style="font-size:11.5px;color:var(--text-faint);margin-top:18px;text-align:center;">
+      <p style="font-size:11.5px;color:#7E94C2;margin-top:18px;text-align:center;">
         New users are created by your administrator.
       </p>
     </div>
@@ -57,7 +57,7 @@
       const password = document.getElementById("password").value;
       const data = await Api.login(username, password);
       Auth.setSession(data.access_token, {
-        user_id: data.user_id, username: data.username, full_name: data.full_name, role: data.role
+        user_id: data.user_id, username: data.username, full_name: data.full_name, role: data.role, currency: data.currency
       });
       if (data.theme_preference) {
         localStorage.setItem("mt_theme", data.theme_preference);

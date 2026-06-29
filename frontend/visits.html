@@ -71,6 +71,11 @@
         </div>
 
         <div class="field field-spaced">
+          <label>Diagnosis</label>
+          <input type="text" id="v_diagnosis" placeholder="e.g. Acute pharyngitis" />
+        </div>
+
+        <div class="field field-spaced">
           <label>Default payment method for this visit</label>
           <select id="v_payment_method">
             <option value="cash">Cash</option>
@@ -138,7 +143,8 @@ function visitRow(p) {
     <div class="med-main">
       <div class="med-name">Dr. ${p.doctor_name} ${p.payment_method ? `<span class="badge ${p.payment_method === 'insurance' ? 'badge-active' : 'badge-warning'}">${p.payment_method}</span>` : ""}</div>
       <div class="med-meta">${p.hospital_name} · ${fmtDate(p.visit_date)}${p.next_visit_date ? ` · Next visit: ${fmtDate(p.next_visit_date)}` : ""}</div>
-      <div class="med-meta">${medCount} medicine${medCount === 1 ? "" : "s"}${total ? ` · $${total.toFixed(2)} spent` : ""}</div>
+      ${p.diagnosis ? `<div class="med-meta">Diagnosis: ${p.diagnosis}</div>` : ""}
+      <div class="med-meta">${medCount} medicine${medCount === 1 ? "" : "s"}${total ? ` · ${money(total)} spent` : ""}</div>
     </div>
     <div style="display:flex;gap:6px;">
       <button class="btn btn-secondary btn-sm" onclick="viewVisit('${p.id}')">View</button>
@@ -179,7 +185,7 @@ function viewVisit(id) {
     <tr>
       <td>${CATEGORY_LABELS[c.category] || c.category}</td>
       <td><span class="badge ${c.payment_method === 'insurance' ? 'badge-active' : 'badge-warning'}">${c.payment_method}</span></td>
-      <td>$${c.amount.toFixed(2)}</td>
+      <td>${money(c.amount)}</td>
       <td>${c.description || ""}</td>
     </tr>`).join("");
 
@@ -192,12 +198,13 @@ function viewVisit(id) {
 
   document.getElementById("viewModalBody").innerHTML = `
     <p style="color:var(--text-soft);font-size:13px;"><strong>Hospital:</strong> ${p.hospital_name}</p>
+    ${p.diagnosis ? `<p style="color:var(--text-soft);font-size:13px;"><strong>Diagnosis:</strong> ${p.diagnosis}</p>` : ""}
     ${p.next_visit_date ? `<p style="color:var(--text-soft);font-size:13px;"><strong>Next visit:</strong> ${fmtDate(p.next_visit_date)}</p>` : ""}
     ${p.notes ? `<p style="color:var(--text-soft);font-size:13px;"><strong>Notes:</strong> ${p.notes}</p>` : ""}
     ${p.prescription_image ? `<img src="${p.prescription_image}" style="max-width:100%;border-radius:10px;margin:10px 0;border:1px solid var(--border);" />` : ""}
     ${vitalsHtml}
     ${(p.cost_items || []).length ? `
-      <h4 style="margin:14px 0 8px;font-size:14px;">Costs (Total: $${(p.total_cost||0).toFixed(2)})</h4>
+      <h4 style="margin:14px 0 8px;font-size:14px;">Costs (Total: ${money(p.total_cost||0)})</h4>
       <table class="data-table"><thead><tr><th>Category</th><th>Payment</th><th>Amount</th><th>Note</th></tr></thead><tbody>${costRows}</tbody></table>
     ` : ""}
     <h4 style="margin:14px 0 8px;font-size:14px;">Medicines from this visit</h4>
@@ -242,7 +249,7 @@ function addCostItemRow(prefill = {}) {
 function updateCostTotal() {
   let total = 0;
   document.querySelectorAll("#costItemsContainer .ci-amount").forEach(inp => { total += parseFloat(inp.value) || 0; });
-  document.getElementById("costTotalLabel").textContent = total > 0 ? `Total so far: $${total.toFixed(2)}` : "";
+  document.getElementById("costTotalLabel").textContent = total > 0 ? `Total so far: ${money(total)}` : "";
 }
 
 document.getElementById("addCostItemBtn").addEventListener("click", () => addCostItemRow());
@@ -301,6 +308,7 @@ document.getElementById("visitForm").addEventListener("submit", async (e) => {
     fd.append("hospital_name", document.getElementById("v_hospital").value);
     fd.append("visit_date", document.getElementById("v_date").value);
     if (document.getElementById("v_next_date").value) fd.append("next_visit_date", document.getElementById("v_next_date").value);
+    fd.append("diagnosis", document.getElementById("v_diagnosis").value);
     fd.append("payment_method", document.getElementById("v_payment_method").value);
     if (document.getElementById("v_bp_sys").value) fd.append("bp_systolic", document.getElementById("v_bp_sys").value);
     if (document.getElementById("v_bp_dia").value) fd.append("bp_diastolic", document.getElementById("v_bp_dia").value);

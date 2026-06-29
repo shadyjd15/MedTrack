@@ -4,7 +4,7 @@ from datetime import datetime, date
 
 from sqlalchemy import (
     Column, String, Integer, Boolean, Date, DateTime, ForeignKey,
-    Table, Text, Enum, Float
+    Table, Text, Enum, Float, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -17,27 +17,15 @@ def gen_uuid():
 class RoleEnum(str, enum.Enum):
     admin = "admin"
     user = "user"
+    caregiver = "caregiver"
 
 
-class PaymentMethodEnum(str, enum.Enum):
-    cash = "cash"
-    insurance = "insurance"
-
-
-class CostCategoryEnum(str, enum.Enum):
-    reception = "reception"
-    pharmacy = "pharmacy"
-    laboratory = "laboratory"
-    xray = "xray"
-    consultation = "consultation"
-    procedure = "procedure"
-    other = "other"
-
-
-class LabTestTypeEnum(str, enum.Enum):
-    lab = "lab"
-    imaging = "imaging"
-
+# NOTE: payment_method / category / test_type used to be native Postgres ENUM
+# columns. They are now plain strings (validated in the Pydantic schemas /
+# routers instead) specifically so that adding them to already-deployed
+# databases is a trivial ADD COLUMN rather than requiring a CREATE TYPE +
+# ALTER TYPE migration. Keep new "choice" fields as String unless you have a
+# strong reason not to — see migrations.py for why.
 
 # Many-to-many: medicine <-> symptom tags
 medicine_tags = Table(
@@ -59,10 +47,26 @@ class User(Base):
     role = Column(Enum(RoleEnum), default=RoleEnum.user, nullable=False)
     is_active = Column(Boolean, default=True)
     theme_preference = Column(String, default="light")  # light | dark
+    currency = Column(String, default="USD")  # ISO 4217 code, e.g. USD, EUR, GBP, SAR
     created_at = Column(DateTime, default=datetime.utcnow)
 
     prescriptions = relationship("Prescription", back_populates="user", cascade="all, delete-orphan")
     vaccinations = relationship("Vaccination", back_populates="user", cascade="all, delete-orphan")
+    allergies = relationship("Allergy", back_populates="user", cascade="all, delete-orphan")
+
+
+class CaregiverLink(Base):
+    """Grants a caregiver account access to a patient (regular user) account's records."""
+    __tablename__ = "caregiver_links"
+    __table_args__ = (UniqueConstraint("caregiver_id", "patient_id", name="uq_caregiver_patient"),)
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    caregiver_id = Column(String, ForeignKey("users.id"), nullable=False)
+    patient_id = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    caregiver = relationship("User", foreign_keys=[caregiver_id])
+    patient = relationship("User", foreign_keys=[patient_id])
 
 
 class SymptomTag(Base):
@@ -84,11 +88,12 @@ class Prescription(Base):
     hospital_name = Column(String, nullable=False, index=True)
     visit_date = Column(Date, nullable=False, index=True)
     next_visit_date = Column(Date, nullable=True)
+    diagnosis = Column(String, nullable=True, index=True)
     notes = Column(Text, nullable=True)
     prescription_image = Column(String, nullable=True)  # path to uploaded scan/photo
 
     # Payment / cost
-    payment_method = Column(Enum(PaymentMethodEnum), nullable=True)  # overall default for the visit
+    payment_method = Column(String, nullable=True)  # "cash" | "insurance" — default for the visit
 
     # Vitals captured during this visit
     bp_systolic = Column(Integer, nullable=True)
@@ -110,8 +115,8 @@ class CostItem(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     prescription_id = Column(String, ForeignKey("prescriptions.id"), nullable=False)
-    category = Column(Enum(CostCategoryEnum), nullable=False, default=CostCategoryEnum.other)
-    payment_method = Column(Enum(PaymentMethodEnum), nullable=False, default=PaymentMethodEnum.cash)
+    category = Column(String, nullable=False, default="other")
+    payment_method = Column(String, nullable=False, default="cash")
     amount = Column(Float, nullable=False)
     description = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -143,7 +148,7 @@ class Medicine(Base):
 
     # Cost / insurance
     cost = Column(Float, nullable=True)
-    payment_method = Column(Enum(PaymentMethodEnum), nullable=True)
+    payment_method = Column(String, nullable=True)
     insurance_covered = Column(Boolean, default=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -159,7 +164,7 @@ class LabTest(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     prescription_id = Column(String, ForeignKey("prescriptions.id"), nullable=False)
     test_name = Column(String, nullable=False)  # e.g. "Complete Blood Count", "Chest X-Ray"
-    test_type = Column(Enum(LabTestTypeEnum), nullable=False, default=LabTestTypeEnum.lab)
+    test_type = Column(String, nullable=False, default="lab")  # "lab" | "imaging"
     test_date = Column(Date, nullable=True)
     result_summary = Column(Text, nullable=True)
     file_path = Column(String, nullable=True)  # link to result file (PDF/image)
@@ -186,3 +191,35 @@ class Vaccination(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="vaccinations")
+
+
+class Allergy(Base):
+    """Known allergy / adverse reaction to a substance or medicine composition."""
+    __tablename__ = "allergies"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    substance = Column(String, nullable=False, index=True)  # matched against medicine.composition
+    reaction = Column(String, nullable=True)  # e.g. "Rash", "Anaphylaxis"
+    severity = Column(String, nullable=True)  # "mild" | "moderate" | "severe"
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="allergies")
+
+
+class SmtpSettings(Base):
+    """Single-row table holding the admin-configured outbound email settings."""
+    __tablename__ = "smtp_settings"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    host = Column(String, nullable=True)
+    port = Column(Integer, nullable=True, default=587)
+    username = Column(String, nullable=True)
+    password = Column(String, nullable=True)
+    use_tls = Column(Boolean, default=True)
+    from_email = Column(String, nullable=True)
+    from_name = Column(String, nullable=True, default="MediCal")
+    notify_on_account_created = Column(Boolean, default=True)
+    notify_on_password_change = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

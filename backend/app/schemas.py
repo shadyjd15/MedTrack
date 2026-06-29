@@ -3,6 +3,9 @@ from typing import Optional, List
 from pydantic import BaseModel, ConfigDict
 
 
+CURRENCIES = ["USD", "EUR", "GBP", "SAR", "AED", "EGP", "INR", "PKR", "CAD", "AUD", "JPY"]
+
+
 # ---------- Auth ----------
 class LoginRequest(BaseModel):
     username: str
@@ -17,6 +20,7 @@ class Token(BaseModel):
     full_name: Optional[str] = None
     user_id: str
     theme_preference: Optional[str] = "light"
+    currency: Optional[str] = "USD"
 
 
 # ---------- Users ----------
@@ -25,7 +29,8 @@ class UserCreate(BaseModel):
     password: str
     full_name: Optional[str] = None
     email: Optional[str] = None
-    role: str = "user"
+    role: str = "user"  # admin | user | caregiver
+    currency: str = "USD"
 
 
 class UserUpdate(BaseModel):
@@ -34,6 +39,8 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     password: Optional[str] = None
     theme_preference: Optional[str] = None
+    currency: Optional[str] = None
+    role: Optional[str] = None
 
 
 class UserOut(BaseModel):
@@ -45,7 +52,23 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     theme_preference: Optional[str] = "light"
+    currency: Optional[str] = "USD"
     created_at: datetime
+
+
+# ---------- Caregivers ----------
+class CaregiverLinkCreate(BaseModel):
+    caregiver_id: str
+    patient_id: str
+
+
+class CaregiverLinkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    caregiver_id: str
+    patient_id: str
+    caregiver_name: Optional[str] = None
+    patient_name: Optional[str] = None
 
 
 # ---------- Tags ----------
@@ -70,6 +93,37 @@ class CostItemOut(BaseModel):
     payment_method: str
     amount: float
     description: Optional[str] = None
+
+
+# ---------- Allergies ----------
+class AllergyCreate(BaseModel):
+    substance: str
+    reaction: Optional[str] = None
+    severity: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class AllergyUpdate(BaseModel):
+    substance: Optional[str] = None
+    reaction: Optional[str] = None
+    severity: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class AllergyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    substance: str
+    reaction: Optional[str] = None
+    severity: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class AllergyCheckResult(BaseModel):
+    has_warning: bool
+    matched_substance: Optional[str] = None
+    severity: Optional[str] = None
+    reaction: Optional[str] = None
 
 
 # ---------- Medicine ----------
@@ -141,6 +195,29 @@ class MedicineOut(BaseModel):
     hospital_name: Optional[str] = None
     visit_date: Optional[date] = None
     is_low_stock: bool = False
+    allergy_warning: Optional[AllergyCheckResult] = None
+
+
+class MedicineImportRow(BaseModel):
+    doctor_name: str
+    hospital_name: str
+    visit_date: date
+    name: str
+    composition: str
+    dose: str
+    frequency: Optional[str] = None
+    manufacturer: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    is_active: Optional[bool] = True
+    tags: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ImportResult(BaseModel):
+    imported: int
+    skipped: int
+    errors: List[str] = []
 
 
 # ---------- Lab tests ----------
@@ -215,6 +292,7 @@ class PrescriptionUpdate(BaseModel):
     hospital_name: Optional[str] = None
     visit_date: Optional[date] = None
     next_visit_date: Optional[date] = None
+    diagnosis: Optional[str] = None
     notes: Optional[str] = None
     payment_method: Optional[str] = None
     bp_systolic: Optional[int] = None
@@ -230,6 +308,7 @@ class PrescriptionOut(BaseModel):
     hospital_name: str
     visit_date: date
     next_visit_date: Optional[date] = None
+    diagnosis: Optional[str] = None
     notes: Optional[str] = None
     prescription_image: Optional[str] = None
     payment_method: Optional[str] = None
@@ -277,6 +356,7 @@ class DashboardStats(BaseModel):
     spending: Optional[SpendingSummary] = None
     upcoming_lab_tests: List[LabTestOut] = []
     upcoming_vaccinations: List[VaccinationOut] = []
+    currency: str = "USD"
 
 
 # ---------- OCR ----------
@@ -293,3 +373,33 @@ class OcrResult(BaseModel):
 class VersionInfo(BaseModel):
     version: str
     repo: Optional[str] = None
+
+
+# ---------- SMTP / email settings ----------
+class SmtpSettingsUpdate(BaseModel):
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    use_tls: Optional[bool] = None
+    from_email: Optional[str] = None
+    from_name: Optional[str] = None
+    notify_on_account_created: Optional[bool] = None
+    notify_on_password_change: Optional[bool] = None
+
+
+class SmtpSettingsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    has_password: bool = False
+    use_tls: bool = True
+    from_email: Optional[str] = None
+    from_name: Optional[str] = None
+    notify_on_account_created: bool = True
+    notify_on_password_change: bool = True
+
+
+class TestEmailRequest(BaseModel):
+    to: str

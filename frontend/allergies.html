@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Allergies — MediCal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="/js/theme.js"></script>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarMount"></div>
+  <div class="main-area">
+    <div class="topbar">
+      <div>
+        <h1>Allergies</h1>
+        <div class="topbar-sub">Known allergies and adverse reactions — checked automatically against medicine compositions</div>
+      </div>
+      <button class="btn btn-primary" id="addBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add allergy
+      </button>
+    </div>
+    <div class="content">
+      <div class="med-list" id="allergyList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="allergyModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Add allergy</h3>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal()">✕</button>
+    </div>
+    <form id="allergyForm">
+      <div class="modal-body">
+        <div class="field field-spaced">
+          <label>Substance / composition <span class="req">*</span></label>
+          <input type="text" id="a_substance" required placeholder="e.g. Penicillin, Sulfa, Ibuprofen" />
+          <div class="helptext">Matched against any medicine's composition field when you add a new medicine.</div>
+        </div>
+        <div class="form-grid">
+          <div class="field field-spaced">
+            <label>Reaction</label>
+            <input type="text" id="a_reaction" placeholder="e.g. Rash, Anaphylaxis" />
+          </div>
+          <div class="field field-spaced">
+            <label>Severity</label>
+            <select id="a_severity">
+              <option value="">—</option>
+              <option value="mild">Mild</option>
+              <option value="moderate">Moderate</option>
+              <option value="severe">Severe</option>
+            </select>
+          </div>
+        </div>
+        <div class="field field-spaced">
+          <label>Notes</label>
+          <textarea id="a_notes"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="saveBtn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+Auth.requireAuth();
+mountSidebar("allergies");
+
+let editingId = null;
+let allergyCache = [];
+
+const SEVERITY_BADGE = { mild: "badge-active", moderate: "badge-warning", severe: "" };
+
+function allergyRow(a) {
+  const severityStyle = a.severity === "severe" ? `style="background:var(--red-light);color:var(--red);"` : "";
+  return `
+  <div class="med-row">
+    <div class="med-thumb" style="background:var(--red-light);color:var(--red);">⚠</div>
+    <div class="med-main">
+      <div class="med-name">${a.substance} ${a.severity ? `<span class="badge ${SEVERITY_BADGE[a.severity] || ''}" ${severityStyle}>${a.severity}</span>` : ""}</div>
+      ${a.reaction ? `<div class="med-meta">Reaction: ${a.reaction}</div>` : ""}
+      ${a.notes ? `<div class="med-meta">${a.notes}</div>` : ""}
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-secondary btn-sm" onclick="openEdit('${a.id}')">Edit</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteAllergy('${a.id}')">Delete</button>
+    </div>
+  </div>`;
+}
+
+async function loadAllergies() {
+  const list = document.getElementById("allergyList");
+  list.innerHTML = Array(2).fill('<div class="skeleton" style="height:60px;"></div>').join("");
+  try {
+    allergyCache = await Api.listAllergies();
+    if (!allergyCache.length) {
+      list.innerHTML = `<div class="empty-state">⚠<div>No known allergies recorded. Adding one here will trigger a warning whenever a matching medicine composition is added.</div></div>`;
+      return;
+    }
+    list.innerHTML = allergyCache.map(allergyRow).join("");
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+document.getElementById("addBtn").addEventListener("click", () => {
+  editingId = null;
+  document.getElementById("modalTitle").textContent = "Add allergy";
+  document.getElementById("allergyForm").reset();
+  document.getElementById("allergyModal").style.display = "flex";
+});
+
+function openEdit(id) {
+  const a = allergyCache.find(x => x.id === id);
+  if (!a) return;
+  editingId = id;
+  document.getElementById("modalTitle").textContent = "Edit allergy";
+  document.getElementById("a_substance").value = a.substance;
+  document.getElementById("a_reaction").value = a.reaction || "";
+  document.getElementById("a_severity").value = a.severity || "";
+  document.getElementById("a_notes").value = a.notes || "";
+  document.getElementById("allergyModal").style.display = "flex";
+}
+
+function closeModal() { document.getElementById("allergyModal").style.display = "none"; }
+
+document.getElementById("allergyForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("saveBtn");
+  btn.disabled = true;
+  try {
+    const payload = {
+      substance: document.getElementById("a_substance").value,
+      reaction: document.getElementById("a_reaction").value || null,
+      severity: document.getElementById("a_severity").value || null,
+      notes: document.getElementById("a_notes").value || null,
+    };
+    if (!editingId) {
+      await Api.createAllergy(payload);
+      showToast("Allergy added", "success");
+    } else {
+      await Api.updateAllergy(editingId, payload);
+      showToast("Allergy updated", "success");
+    }
+    closeModal();
+    loadAllergies();
+  } catch (err) { showToast(err.message, "error"); }
+  finally { btn.disabled = false; }
+});
+
+async function deleteAllergy(id) {
+  if (!confirm("Delete this allergy record?")) return;
+  try {
+    await Api.deleteAllergy(id);
+    showToast("Deleted", "success");
+    loadAllergies();
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+loadAllergies();
+</script>
+</body>
+</html>

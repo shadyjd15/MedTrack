@@ -34,6 +34,12 @@ async function apiRequest(path, { method = "GET", body = null, isForm = false } 
   if (token) headers["Authorization"] = `Bearer ${token}`;
   if (!isForm && body) headers["Content-Type"] = "application/json";
 
+  const user = Auth.getUser();
+  if (user && user.role === "caregiver") {
+    const activePatient = localStorage.getItem("mt_active_patient");
+    if (activePatient) headers["X-Patient-Id"] = activePatient;
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
@@ -66,6 +72,7 @@ const Api = {
   deleteUser: (id) => apiRequest(`/users/${id}`, { method: "DELETE" }),
   changeMyPassword: (password) => apiRequest("/users/me/password", { method: "PUT", body: { password } }),
   updateMyTheme: (theme_preference) => apiRequest("/users/me/theme", { method: "PUT", body: { theme_preference } }),
+  updateMyCurrency: (currency) => apiRequest("/users/me/currency", { method: "PUT", body: { currency } }),
 
   listPrescriptions: () => apiRequest("/prescriptions"),
   getPrescription: (id) => apiRequest(`/prescriptions/${id}`),
@@ -105,16 +112,68 @@ const Api = {
   ocrScan: (formData) => apiRequest("/ocr/scan", { method: "POST", body: formData, isForm: true }),
 
   getVersion: () => apiRequest("/version"),
+
+  listAllergies: () => apiRequest("/allergies"),
+  createAllergy: (payload) => apiRequest("/allergies", { method: "POST", body: payload }),
+  updateAllergy: (id, payload) => apiRequest(`/allergies/${id}`, { method: "PUT", body: payload }),
+  deleteAllergy: (id) => apiRequest(`/allergies/${id}`, { method: "DELETE" }),
+  checkAllergy: (composition) => apiRequest(`/medicines/allergy-check?composition=${encodeURIComponent(composition)}`),
+
+  listCaregiverLinks: () => apiRequest("/caregivers/links"),
+  createCaregiverLink: (payload) => apiRequest("/caregivers/links", { method: "POST", body: payload }),
+  deleteCaregiverLink: (id) => apiRequest(`/caregivers/links/${id}`, { method: "DELETE" }),
+  myPatients: () => apiRequest("/caregivers/my-patients"),
+
+  getEmailSettings: () => apiRequest("/email-settings"),
+  updateEmailSettings: (payload) => apiRequest("/email-settings", { method: "PUT", body: payload }),
+  sendTestEmail: (to) => apiRequest("/email-settings/test", { method: "POST", body: { to } }),
+
+  importMedicinesCsv: (formData) => apiRequest("/medicines/import", { method: "POST", body: formData, isForm: true }),
 };
+
+const CURRENCY_SYMBOLS = {
+  USD: "$", EUR: "€", GBP: "£", SAR: "ر.س", AED: "د.إ", EGP: "E£",
+  INR: "₹", PKR: "₨", CAD: "CA$", AUD: "A$", JPY: "¥",
+};
+
+function currencySymbol(code) {
+  return CURRENCY_SYMBOLS[code] || (code ? code + " " : "$");
+}
+
+function money(amount, currencyCode) {
+  const code = currencyCode || (Auth.getUser() && Auth.getUser().currency) || "USD";
+  return `${currencySymbol(code)}${(amount || 0).toFixed(2)}`;
+}
 
 function exportUrl(path, params = {}) {
   const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== "" && v != null)).toString();
   return `${API_BASE}/export/${path}${qs ? `?${qs}` : ""}`;
 }
 
+async function downloadMedicineTemplate() {
+  const token = Auth.getToken();
+  const res = await fetch(`${API_BASE}/medicines/import/template`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) { showToast("Could not download template", "error"); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "medicine-import-template.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function downloadExport(path, params = {}) {
   const token = Auth.getToken();
-  const res = await fetch(exportUrl(path, params), { headers: { Authorization: `Bearer ${token}` } });
+  const headers = { Authorization: `Bearer ${token}` };
+  const user = Auth.getUser();
+  if (user && user.role === "caregiver") {
+    const activePatient = localStorage.getItem("mt_active_patient");
+    if (activePatient) headers["X-Patient-Id"] = activePatient;
+  }
+  const res = await fetch(exportUrl(path, params), { headers });
   if (!res.ok) { showToast("Export failed", "error"); return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

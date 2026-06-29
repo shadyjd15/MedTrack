@@ -15,21 +15,30 @@ UPLOAD_DIR = "uploads/vaccinations"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-def _scope_query(db: Session, user: models.User):
+def _scope_query(db: Session, scope_user_id: Optional[str]):
     q = db.query(models.Vaccination)
-    if user.role != models.RoleEnum.admin:
-        q = q.filter(models.Vaccination.user_id == user.id)
+    if scope_user_id is not None:
+        q = q.filter(models.Vaccination.user_id == scope_user_id)
     return q
 
 
 @router.get("", response_model=List[schemas.VaccinationOut])
-def list_vaccinations(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    return _scope_query(db, user).order_by(models.Vaccination.date_administered.desc()).all()
+def list_vaccinations(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
+):
+    return _scope_query(db, scope_user_id).order_by(models.Vaccination.date_administered.desc()).all()
 
 
 @router.post("", response_model=schemas.VaccinationOut)
-def create_vaccination(payload: schemas.VaccinationCreate, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    v = models.Vaccination(user_id=user.id, **payload.model_dump())
+def create_vaccination(
+    payload: schemas.VaccinationCreate, db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
+):
+    owner_id = scope_user_id if scope_user_id is not None else user.id
+    v = models.Vaccination(user_id=owner_id, **payload.model_dump())
     db.add(v)
     db.commit()
     db.refresh(v)
@@ -37,8 +46,12 @@ def create_vaccination(payload: schemas.VaccinationCreate, db: Session = Depends
 
 
 @router.put("/{vac_id}", response_model=schemas.VaccinationOut)
-def update_vaccination(vac_id: str, payload: schemas.VaccinationUpdate, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    v = _scope_query(db, user).filter(models.Vaccination.id == vac_id).first()
+def update_vaccination(
+    vac_id: str, payload: schemas.VaccinationUpdate, db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
+):
+    v = _scope_query(db, scope_user_id).filter(models.Vaccination.id == vac_id).first()
     if not v:
         raise HTTPException(status_code=404, detail="Vaccination record not found")
     for k, val in payload.model_dump(exclude_unset=True).items():
@@ -49,8 +62,12 @@ def update_vaccination(vac_id: str, payload: schemas.VaccinationUpdate, db: Sess
 
 
 @router.post("/{vac_id}/certificate", response_model=schemas.VaccinationOut)
-def upload_certificate(vac_id: str, certificate: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    v = _scope_query(db, user).filter(models.Vaccination.id == vac_id).first()
+def upload_certificate(
+    vac_id: str, certificate: UploadFile = File(...), db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
+):
+    v = _scope_query(db, scope_user_id).filter(models.Vaccination.id == vac_id).first()
     if not v:
         raise HTTPException(status_code=404, detail="Vaccination record not found")
     ext = os.path.splitext(certificate.filename)[1]
@@ -65,8 +82,12 @@ def upload_certificate(vac_id: str, certificate: UploadFile = File(...), db: Ses
 
 
 @router.delete("/{vac_id}")
-def delete_vaccination(vac_id: str, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    v = _scope_query(db, user).filter(models.Vaccination.id == vac_id).first()
+def delete_vaccination(
+    vac_id: str, db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
+):
+    v = _scope_query(db, scope_user_id).filter(models.Vaccination.id == vac_id).first()
     if not v:
         raise HTTPException(status_code=404, detail="Vaccination record not found")
     db.delete(v)

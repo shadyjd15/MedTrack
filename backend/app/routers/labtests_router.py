@@ -16,24 +16,27 @@ UPLOAD_DIR = "uploads/lab_tests"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-def _scope_query(db: Session, user: models.User):
+def _scope_query(db: Session, scope_user_id: Optional[str]):
     q = db.query(models.LabTest).join(models.Prescription)
-    if user.role != models.RoleEnum.admin:
-        q = q.filter(models.Prescription.user_id == user.id)
+    if scope_user_id is not None:
+        q = q.filter(models.Prescription.user_id == scope_user_id)
     return q
 
 
 def _to_out(lt: models.LabTest) -> schemas.LabTestOut:
     out = schemas.LabTestOut.model_validate(lt)
-    out.test_type = lt.test_type.value if hasattr(lt.test_type, "value") else lt.test_type
     out.doctor_name = lt.prescription.doctor_name
     out.hospital_name = lt.prescription.hospital_name
     return out
 
 
 @router.get("", response_model=List[schemas.LabTestOut])
-def list_lab_tests(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    rows = _scope_query(db, user).order_by(models.LabTest.test_date.desc().nullslast()).all()
+def list_lab_tests(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
+):
+    rows = _scope_query(db, scope_user_id).order_by(models.LabTest.test_date.desc().nullslast()).all()
     return [_to_out(r) for r in rows]
 
 
@@ -48,11 +51,14 @@ def create_lab_test(
     result_file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
 ):
     presc = db.query(models.Prescription).filter(models.Prescription.id == prescription_id).first()
     if not presc:
         raise HTTPException(status_code=404, detail="Visit not found")
-    if user.role != models.RoleEnum.admin and presc.user_id != user.id:
+    if scope_user_id is not None and presc.user_id != scope_user_id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    if scope_user_id is None and user.role != models.RoleEnum.admin and presc.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not allowed")
 
     file_path = None
@@ -80,8 +86,12 @@ def create_lab_test(
 
 
 @router.put("/{lt_id}", response_model=schemas.LabTestOut)
-def update_lab_test(lt_id: str, payload: schemas.LabTestUpdate, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    lt = _scope_query(db, user).filter(models.LabTest.id == lt_id).first()
+def update_lab_test(
+    lt_id: str, payload: schemas.LabTestUpdate, db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
+):
+    lt = _scope_query(db, scope_user_id).filter(models.LabTest.id == lt_id).first()
     if not lt:
         raise HTTPException(status_code=404, detail="Lab test not found")
     for k, v in payload.model_dump(exclude_unset=True).items():
@@ -92,8 +102,12 @@ def update_lab_test(lt_id: str, payload: schemas.LabTestUpdate, db: Session = De
 
 
 @router.post("/{lt_id}/file", response_model=schemas.LabTestOut)
-def upload_result_file(lt_id: str, result_file: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    lt = _scope_query(db, user).filter(models.LabTest.id == lt_id).first()
+def upload_result_file(
+    lt_id: str, result_file: UploadFile = File(...), db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
+):
+    lt = _scope_query(db, scope_user_id).filter(models.LabTest.id == lt_id).first()
     if not lt:
         raise HTTPException(status_code=404, detail="Lab test not found")
     ext = os.path.splitext(result_file.filename)[1]
@@ -108,8 +122,12 @@ def upload_result_file(lt_id: str, result_file: UploadFile = File(...), db: Sess
 
 
 @router.delete("/{lt_id}")
-def delete_lab_test(lt_id: str, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    lt = _scope_query(db, user).filter(models.LabTest.id == lt_id).first()
+def delete_lab_test(
+    lt_id: str, db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
+):
+    lt = _scope_query(db, scope_user_id).filter(models.LabTest.id == lt_id).first()
     if not lt:
         raise HTTPException(status_code=404, detail="Lab test not found")
     db.delete(lt)

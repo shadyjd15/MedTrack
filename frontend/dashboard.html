@@ -72,7 +72,9 @@ function vitalBox(value, label) {
   return `<div class="vital-box"><div class="v-value">${value ?? "—"}</div><div class="v-label">${label}</div></div>`;
 }
 
-function money(n) { return `$${(n || 0).toFixed(2)}`; }
+// Note: a shared money() helper already exists in api.js; this page passes
+// the scoped patient's currency (from /dashboard/stats) into it explicitly,
+// since an admin or caregiver viewing someone else's data should see THEIR currency.
 
 async function load() {
   const grid = document.getElementById("kpiGrid");
@@ -126,14 +128,14 @@ async function load() {
     const cashPct = (s.spending.cash_total / total) * 100;
     const insPct = (s.spending.insurance_total / total) * 100;
     spendBox.innerHTML = `
-      <div class="kpi-value" style="margin-bottom:6px;">${money(s.spending.grand_total)}</div>
+      <div class="kpi-value" style="margin-bottom:6px;">${money(s.spending.grand_total, s.currency)}</div>
       <div class="spend-bar-track">
         <div class="spend-bar-cash" style="width:${cashPct}%;"></div>
         <div class="spend-bar-insurance" style="width:${insPct}%;"></div>
       </div>
       <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:12.5px;">
-        <div><span class="legend-dot" style="background:var(--teal);"></span>Cash · ${money(s.spending.cash_total)}</div>
-        <div><span class="legend-dot" style="background:var(--green);"></span>Insurance · ${money(s.spending.insurance_total)}</div>
+        <div><span class="legend-dot" style="background:var(--teal);"></span>Cash · ${money(s.spending.cash_total, s.currency)}</div>
+        <div><span class="legend-dot" style="background:var(--green);"></span>Insurance · ${money(s.spending.insurance_total, s.currency)}</div>
       </div>
       ${s.spending.grand_total === 0 ? `<div class="kpi-foot" style="margin-top:10px;">No costs logged yet for ${s.spending.year}. Add amounts when recording a visit.</div>` : ""}
     `;

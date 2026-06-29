@@ -15,7 +15,7 @@
     <div class="topbar">
       <div>
         <h1>Manage Users</h1>
-        <div class="topbar-sub">Create and manage logins for patients/family members</div>
+        <div class="topbar-sub">Create logins and assign caregivers to patients</div>
       </div>
       <button class="btn btn-primary" id="addUserBtn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -23,12 +23,25 @@
       </button>
     </div>
     <div class="content">
-      <div class="card">
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-header"><h3>Accounts</h3></div>
         <table class="data-table">
           <thead>
-            <tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr>
+            <tr><th>Name</th><th>Username</th><th>Role</th><th>Currency</th><th>Status</th><th>Created</th><th></th></tr>
           </thead>
           <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Caregiver assignments</h3>
+          <button class="btn btn-secondary btn-sm" id="addLinkBtn">+ Link caregiver to patient</button>
+        </div>
+        <div class="topbar-sub" style="margin-bottom:12px;">Caregiver accounts can only see patients they're explicitly linked to here.</div>
+        <table class="data-table">
+          <thead><tr><th>Caregiver</th><th>Patient</th><th></th></tr></thead>
+          <tbody id="linksBody"></tbody>
         </table>
       </div>
     </div>
@@ -50,7 +63,7 @@
           </div>
           <div class="field field-spaced">
             <label>Email</label>
-            <input type="text" id="u_email" />
+            <input type="text" id="u_email" placeholder="Used for account/password notification emails" />
           </div>
         </div>
         <div class="form-grid">
@@ -63,12 +76,31 @@
             <input type="password" id="u_password" />
           </div>
         </div>
-        <div class="field field-spaced">
-          <label>Role</label>
-          <select id="u_role">
-            <option value="user">Standard user</option>
-            <option value="admin">Administrator</option>
-          </select>
+        <div class="form-grid">
+          <div class="field field-spaced">
+            <label>Role</label>
+            <select id="u_role">
+              <option value="user">Standard user (patient)</option>
+              <option value="caregiver">Caregiver (manages linked patients)</option>
+              <option value="admin">Administrator</option>
+            </select>
+          </div>
+          <div class="field field-spaced">
+            <label>Preferred currency</label>
+            <select id="u_currency">
+              <option value="USD">USD — US Dollar</option>
+              <option value="EUR">EUR — Euro</option>
+              <option value="GBP">GBP — British Pound</option>
+              <option value="SAR">SAR — Saudi Riyal</option>
+              <option value="AED">AED — UAE Dirham</option>
+              <option value="EGP">EGP — Egyptian Pound</option>
+              <option value="INR">INR — Indian Rupee</option>
+              <option value="PKR">PKR — Pakistani Rupee</option>
+              <option value="CAD">CAD — Canadian Dollar</option>
+              <option value="AUD">AUD — Australian Dollar</option>
+              <option value="JPY">JPY — Japanese Yen</option>
+            </select>
+          </div>
         </div>
         <div class="field field-spaced" id="u_active_field" style="display:none;">
           <label><input type="checkbox" id="u_active" style="width:auto;margin-right:6px;" />Account active</label>
@@ -82,6 +114,31 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="linkModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Link caregiver to patient</h3>
+      <button class="btn btn-ghost btn-icon" onclick="document.getElementById('linkModal').style.display='none'">✕</button>
+    </div>
+    <form id="linkForm">
+      <div class="modal-body">
+        <div class="field field-spaced">
+          <label>Caregiver <span class="req">*</span></label>
+          <select id="l_caregiver" required></select>
+        </div>
+        <div class="field field-spaced">
+          <label>Patient <span class="req">*</span></label>
+          <select id="l_patient" required></select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('linkModal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-primary">Link</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script src="/js/api.js"></script>
 <script src="/js/sidebar.js"></script>
 <script>
@@ -90,12 +147,14 @@ if (!Auth.isAdmin()) window.location.href = "/dashboard.html";
 mountSidebar("users");
 
 let editingUserId = null;
+let usersCache = [];
 
 function userRow(u) {
   return `<tr>
     <td>${u.full_name || "—"}</td>
     <td>${u.username}</td>
-    <td><span class="badge ${u.role === 'admin' ? 'badge-active' : 'badge-inactive'}">${u.role}</span></td>
+    <td><span class="badge ${u.role === 'admin' ? 'badge-active' : (u.role === 'caregiver' ? 'badge-warning' : 'badge-inactive')}">${u.role}</span></td>
+    <td>${u.currency || "USD"}</td>
     <td>${u.is_active ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Disabled</span>'}</td>
     <td>${fmtDate(u.created_at)}</td>
     <td style="text-align:right;">
@@ -107,8 +166,56 @@ function userRow(u) {
 
 async function loadUsers() {
   try {
-    const users = await Api.listUsers();
-    document.getElementById("usersBody").innerHTML = users.map(userRow).join("");
+    usersCache = await Api.listUsers();
+    document.getElementById("usersBody").innerHTML = usersCache.map(userRow).join("");
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+async function loadLinks() {
+  try {
+    const links = await Api.listCaregiverLinks();
+    const body = document.getElementById("linksBody");
+    if (!links.length) {
+      body.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-faint);padding:20px;">No caregiver assignments yet.</td></tr>`;
+      return;
+    }
+    body.innerHTML = links.map(l => `
+      <tr>
+        <td>${l.caregiver_name}</td>
+        <td>${l.patient_name}</td>
+        <td style="text-align:right;"><button class="btn btn-danger btn-sm" onclick="deleteLink('${l.id}')">Remove</button></td>
+      </tr>`).join("");
+  } catch (err) { showToast(err.message, "error"); }
+}
+
+document.getElementById("addLinkBtn").addEventListener("click", () => {
+  const caregivers = usersCache.filter(u => u.role === "caregiver");
+  const patients = usersCache.filter(u => u.role === "user");
+  if (!caregivers.length) { showToast("Create a caregiver account first", "error"); return; }
+  document.getElementById("l_caregiver").innerHTML = caregivers.map(c => `<option value="${c.id}">${c.full_name || c.username}</option>`).join("");
+  document.getElementById("l_patient").innerHTML = patients.map(p => `<option value="${p.id}">${p.full_name || p.username}</option>`).join("");
+  document.getElementById("linkModal").style.display = "flex";
+});
+
+document.getElementById("linkForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await Api.createCaregiverLink({
+      caregiver_id: document.getElementById("l_caregiver").value,
+      patient_id: document.getElementById("l_patient").value,
+    });
+    showToast("Linked", "success");
+    document.getElementById("linkModal").style.display = "none";
+    loadLinks();
+  } catch (err) { showToast(err.message, "error"); }
+});
+
+async function deleteLink(id) {
+  if (!confirm("Remove this caregiver assignment?")) return;
+  try {
+    await Api.deleteCaregiverLink(id);
+    showToast("Removed", "success");
+    loadLinks();
   } catch (err) { showToast(err.message, "error"); }
 }
 
@@ -133,6 +240,7 @@ function openEditUser(u) {
   document.getElementById("u_password").required = false;
   document.getElementById("u_password_label").innerHTML = "New password (leave blank to keep current)";
   document.getElementById("u_role").value = u.role;
+  document.getElementById("u_currency").value = u.currency || "USD";
   document.getElementById("u_active_field").style.display = "block";
   document.getElementById("u_active").checked = u.is_active;
   document.getElementById("userModal").style.display = "flex";
@@ -157,6 +265,7 @@ document.getElementById("userForm").addEventListener("submit", async (e) => {
         full_name: document.getElementById("u_fullname").value,
         email: document.getElementById("u_email").value,
         role: document.getElementById("u_role").value,
+        currency: document.getElementById("u_currency").value,
       });
       showToast("User created", "success");
     } else {
@@ -164,6 +273,8 @@ document.getElementById("userForm").addEventListener("submit", async (e) => {
         full_name: document.getElementById("u_fullname").value,
         email: document.getElementById("u_email").value,
         is_active: document.getElementById("u_active").checked,
+        currency: document.getElementById("u_currency").value,
+        role: document.getElementById("u_role").value,
       };
       const pw = document.getElementById("u_password").value;
       if (pw) payload.password = pw;
@@ -182,10 +293,11 @@ async function deleteUser(id) {
     await Api.deleteUser(id);
     showToast("User deleted", "success");
     loadUsers();
+    loadLinks();
   } catch (err) { showToast(err.message, "error"); }
 }
 
-loadUsers();
+loadUsers().then(loadLinks);
 </script>
 </body>
 </html>

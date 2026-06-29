@@ -15,27 +15,60 @@
     <div class="topbar">
       <div>
         <h1>Reports</h1>
-        <div class="topbar-sub">Export your medication history, visits and spending</div>
+        <div class="topbar-sub">Export your medication history, visits and spending — with filters</div>
       </div>
     </div>
     <div class="content">
+
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-header"><h3>Filters (apply to Medication & Visit exports below)</h3></div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+          <div class="field">
+            <label>Doctor</label>
+            <input type="text" id="f_doctor" placeholder="Any doctor" />
+          </div>
+          <div class="field">
+            <label>Diagnosis</label>
+            <input type="text" id="f_diagnosis" placeholder="Any diagnosis" />
+          </div>
+          <div class="field">
+            <label>Composition (medicines only)</label>
+            <input type="text" id="f_composition" placeholder="Any composition" />
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button class="btn btn-secondary" style="width:100%;" id="clearFiltersBtn">Clear filters</button>
+          </div>
+        </div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-top:14px;">
+          <div class="field">
+            <label>From date</label>
+            <input type="date" id="f_from" />
+          </div>
+          <div class="field">
+            <label>To date</label>
+            <input type="date" id="f_to" />
+          </div>
+        </div>
+      </div>
+
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;">
 
         <div class="card">
           <div class="card-header"><h3>Medication history</h3></div>
-          <p class="topbar-sub" style="margin-bottom:14px;">All medicines you've logged, including composition, doses and dates.</p>
+          <p class="topbar-sub" style="margin-bottom:14px;">All medicines, including composition, doses and dates.</p>
           <div style="display:flex;gap:10px;">
-            <button class="btn btn-secondary" onclick="downloadExport('medicines.csv')">Export CSV</button>
-            <button class="btn btn-primary" onclick="downloadExport('medicines.pdf')">Export PDF</button>
+            <button class="btn btn-secondary" onclick="exportMedicines('csv')">Export CSV</button>
+            <button class="btn btn-primary" onclick="exportMedicines('pdf')">Export PDF</button>
           </div>
         </div>
 
         <div class="card">
           <div class="card-header"><h3>Doctor visit history</h3></div>
-          <p class="topbar-sub" style="margin-bottom:14px;">Every visit with doctor, hospital, vitals and total cost.</p>
+          <p class="topbar-sub" style="margin-bottom:14px;">Every visit with doctor, hospital, diagnosis, vitals and total cost.</p>
           <div style="display:flex;gap:10px;">
-            <button class="btn btn-secondary" onclick="downloadExport('visits.csv')">Export CSV</button>
-            <button class="btn btn-primary" onclick="downloadExport('visits.pdf')">Export PDF</button>
+            <button class="btn btn-secondary" onclick="exportVisits('csv')">Export CSV</button>
+            <button class="btn btn-primary" onclick="exportVisits('pdf')">Export PDF</button>
           </div>
         </div>
 
@@ -47,8 +80,8 @@
             <input type="number" id="spendYear" value="2026" />
           </div>
           <div style="display:flex;gap:10px;">
-            <button class="btn btn-secondary" onclick="downloadExport('spending.csv', {year: document.getElementById('spendYear').value})">Export CSV</button>
-            <button class="btn btn-primary" onclick="downloadExport('spending.pdf', {year: document.getElementById('spendYear').value})">Export PDF</button>
+            <button class="btn btn-secondary" onclick="exportSpending('csv')">Export CSV</button>
+            <button class="btn btn-primary" onclick="exportSpending('pdf')">Export PDF</button>
           </div>
         </div>
 
@@ -72,6 +105,29 @@ document.getElementById("spendYear").value = new Date().getFullYear();
 const CATEGORY_LABELS = { reception: "Reception", pharmacy: "Pharmacy", laboratory: "Laboratory",
   xray: "X-Ray / Imaging", consultation: "Consultation", procedure: "Procedure", other: "Other" };
 
+function currentFilters() {
+  return {
+    doctor: document.getElementById("f_doctor").value || undefined,
+    diagnosis: document.getElementById("f_diagnosis").value || undefined,
+    from_date: document.getElementById("f_from").value || undefined,
+    to_date: document.getElementById("f_to").value || undefined,
+  };
+}
+
+function exportMedicines(fmt) {
+  downloadExport(`medicines.${fmt}`, { ...currentFilters(), composition: document.getElementById("f_composition").value || undefined });
+}
+function exportVisits(fmt) {
+  downloadExport(`visits.${fmt}`, currentFilters());
+}
+function exportSpending(fmt) {
+  downloadExport(`spending.${fmt}`, { year: document.getElementById("spendYear").value, doctor: document.getElementById("f_doctor").value || undefined });
+}
+
+document.getElementById("clearFiltersBtn").addEventListener("click", () => {
+  ["f_doctor", "f_diagnosis", "f_composition", "f_from", "f_to"].forEach(id => document.getElementById(id).value = "");
+});
+
 async function loadBreakdown() {
   const box = document.getElementById("categoryBreakdown");
   try {
@@ -88,7 +144,7 @@ async function loadBreakdown() {
         <div style="flex:1;background:var(--surface-2);border-radius:99px;height:9px;overflow:hidden;border:1px solid var(--border);">
           <div style="width:${(amt/max)*100}%;background:var(--teal);height:100%;"></div>
         </div>
-        <div style="width:70px;text-align:right;font-size:12.5px;font-weight:600;">$${amt.toFixed(2)}</div>
+        <div style="width:90px;text-align:right;font-size:12.5px;font-weight:600;">${money(amt, s.currency)}</div>
       </div>
     `).join("");
   } catch (err) { showToast(err.message, "error"); }

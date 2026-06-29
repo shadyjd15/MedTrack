@@ -14,6 +14,7 @@ const ICONS = {
   report: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 17l2.5-3 3 2L18 11"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>`,
   sun: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>`,
   moon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>`,
+  allergy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L2 20h20L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.6" fill="currentColor"/></svg>`,
 };
 
 function renderSidebar(activePage) {
@@ -26,6 +27,7 @@ function renderSidebar(activePage) {
     { key: "visits", label: "Doctor Visits", href: "/visits.html", icon: ICONS.visits },
     { key: "labtests", label: "Lab Tests & Imaging", href: "/lab-tests.html", icon: ICONS.flask },
     { key: "vaccinations", label: "Vaccinations", href: "/vaccinations.html", icon: ICONS.vaccine },
+    { key: "allergies", label: "Allergies", href: "/allergies.html", icon: ICONS.allergy },
     { key: "search", label: "Search", href: "/search.html", icon: ICONS.search },
     { key: "reports", label: "Reports", href: "/reports.html", icon: ICONS.report },
   ];
@@ -49,6 +51,7 @@ function renderSidebar(activePage) {
       <div class="logo-mark"><img src="/assets/logo.png" alt="MediCal logo" /></div>
       <div class="brand-name">MediCal</div>
     </div>
+    <div id="patientSwitcherMount"></div>
     <nav class="sidebar-nav">${navHtml}</nav>
     <div class="sidebar-footer">
       <button class="theme-toggle" onclick="toggleTheme()">
@@ -75,15 +78,42 @@ function renderSidebar(activePage) {
 function mountSidebar(activePage) {
   const mount = document.getElementById("sidebarMount");
   if (mount) mount.outerHTML = renderSidebar(activePage);
-  const btn = document.getElementById("collapseBtn");
   const sidebar = document.getElementById("sidebar");
+
+  // Desktop collapse (icon-only) toggle
+  const btn = document.getElementById("collapseBtn");
   const COLLAPSE_KEY = "mt_sidebar_collapsed";
   if (localStorage.getItem(COLLAPSE_KEY) === "1") sidebar.classList.add("collapsed");
   btn.addEventListener("click", () => {
     sidebar.classList.toggle("collapsed");
     localStorage.setItem(COLLAPSE_KEY, sidebar.classList.contains("collapsed") ? "1" : "0");
   });
+
+  // Mobile off-canvas drawer
+  if (!document.querySelector(".mobile-menu-btn")) {
+    const mobileBtn = document.createElement("button");
+    mobileBtn.className = "mobile-menu-btn";
+    mobileBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`;
+    document.body.appendChild(mobileBtn);
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "sidebar-backdrop";
+    document.body.appendChild(backdrop);
+
+    const closeMobileNav = () => {
+      document.getElementById("sidebar").classList.remove("mobile-open");
+      backdrop.classList.remove("open");
+    };
+    mobileBtn.addEventListener("click", () => {
+      document.getElementById("sidebar").classList.add("mobile-open");
+      backdrop.classList.add("open");
+    });
+    backdrop.addEventListener("click", closeMobileNav);
+    document.querySelectorAll(".nav-item").forEach(el => el.addEventListener("click", closeMobileNav));
+  }
+
   checkVersion();
+  mountPatientSwitcher();
 }
 
 async function checkVersion() {
@@ -109,5 +139,35 @@ async function checkVersion() {
     }
   } catch (e) {
     label.textContent = "";
+  }
+}
+
+async function mountPatientSwitcher() {
+  const mount = document.getElementById("patientSwitcherMount");
+  if (!mount) return;
+  const user = Auth.getUser() || {};
+  if (user.role !== "caregiver") { mount.innerHTML = ""; return; }
+
+  try {
+    const patients = await apiRequest("/caregivers/my-patients");
+    if (!patients.length) {
+      mount.innerHTML = `<div style="padding:8px 16px;font-size:11.5px;color:#7FA09D;">No patients linked yet. Ask your administrator.</div>`;
+      return;
+    }
+    const activeId = localStorage.getItem("mt_active_patient") || patients[0].id;
+    localStorage.setItem("mt_active_patient", activeId);
+    mount.innerHTML = `
+      <div style="padding:0 16px 12px;">
+        <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#5E7C7A;font-weight:700;display:block;margin-bottom:5px;">Viewing patient</label>
+        <select id="patientSwitcherSelect" style="width:100%;padding:7px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:#fff;font-size:12.5px;">
+          ${patients.map(p => `<option value="${p.id}" ${p.id === activeId ? "selected" : ""}>${p.full_name || p.username}</option>`).join("")}
+        </select>
+      </div>`;
+    document.getElementById("patientSwitcherSelect").addEventListener("change", (e) => {
+      localStorage.setItem("mt_active_patient", e.target.value);
+      window.location.reload();
+    });
+  } catch (e) {
+    mount.innerHTML = "";
   }
 }

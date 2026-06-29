@@ -23,6 +23,7 @@ def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
         full_name=user.full_name,
         user_id=user.id,
         theme_preference=user.theme_preference or "light",
+        currency=user.currency or "USD",
     )
 
 

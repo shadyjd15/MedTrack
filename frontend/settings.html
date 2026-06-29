@@ -42,6 +42,29 @@
       </div>
 
       <div class="card" style="margin-bottom:18px;">
+        <div class="card-header"><h3>Currency</h3></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
+          <div>
+            <div style="font-weight:600;font-size:13.5px;">Preferred currency</div>
+            <div class="topbar-sub">Used for all cost and spending displays</div>
+          </div>
+          <select id="currencySelect" style="min-width:180px;">
+            <option value="USD">USD — US Dollar</option>
+            <option value="EUR">EUR — Euro</option>
+            <option value="GBP">GBP — British Pound</option>
+            <option value="SAR">SAR — Saudi Riyal</option>
+            <option value="AED">AED — UAE Dirham</option>
+            <option value="EGP">EGP — Egyptian Pound</option>
+            <option value="INR">INR — Indian Rupee</option>
+            <option value="PKR">PKR — Pakistani Rupee</option>
+            <option value="CAD">CAD — Canadian Dollar</option>
+            <option value="AUD">AUD — Australian Dollar</option>
+            <option value="JPY">JPY — Japanese Yen</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px;">
         <div class="card-header"><h3>Change password</h3></div>
         <form id="pwForm">
           <div class="field field-spaced">
@@ -53,6 +76,57 @@
             <input type="password" id="confirmPassword" required minlength="4" />
           </div>
           <button type="submit" class="btn btn-primary">Update password</button>
+        </form>
+      </div>
+
+      <div class="card" id="emailSettingsCard" style="display:none;">
+        <div class="card-header"><h3>Email (SMTP) — Admin only</h3></div>
+        <p class="topbar-sub" style="margin-bottom:14px;">Configure outbound email so MediCal can notify users on account creation and password changes. Works with Gmail, Yahoo, AOL, Outlook, or any SMTP server — most providers require an "app password" if you have 2FA enabled.</p>
+        <form id="smtpForm">
+          <div class="form-grid">
+            <div class="field field-spaced">
+              <label>SMTP host</label>
+              <input type="text" id="smtp_host" placeholder="smtp.gmail.com" />
+            </div>
+            <div class="field field-spaced">
+              <label>Port</label>
+              <input type="number" id="smtp_port" placeholder="587" />
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="field field-spaced">
+              <label>SMTP username</label>
+              <input type="text" id="smtp_username" placeholder="you@gmail.com" />
+            </div>
+            <div class="field field-spaced">
+              <label id="smtp_password_label">SMTP password / app password</label>
+              <input type="password" id="smtp_password" placeholder="(unchanged if left blank)" />
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="field field-spaced">
+              <label>From name</label>
+              <input type="text" id="smtp_from_name" placeholder="MediCal" />
+            </div>
+            <div class="field field-spaced">
+              <label>From email</label>
+              <input type="text" id="smtp_from_email" placeholder="noreply@yourdomain.com" />
+            </div>
+          </div>
+          <div class="field field-spaced">
+            <label><input type="checkbox" id="smtp_use_tls" style="width:auto;margin-right:6px;" checked />Use TLS (recommended, required by Gmail/Yahoo/AOL)</label>
+          </div>
+          <div class="field field-spaced">
+            <label><input type="checkbox" id="smtp_notify_created" style="width:auto;margin-right:6px;" checked />Email new users their login details on account creation</label>
+          </div>
+          <div class="field field-spaced">
+            <label><input type="checkbox" id="smtp_notify_pw" style="width:auto;margin-right:6px;" checked />Email users when their password changes</label>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="submit" class="btn btn-primary">Save email settings</button>
+            <input type="text" id="testEmailTo" placeholder="you@example.com" style="flex:1;min-width:180px;padding:9px 11px;border:1px solid var(--border);border-radius:6px;" />
+            <button type="button" class="btn btn-secondary" id="sendTestBtn">Send test email</button>
+          </div>
         </form>
       </div>
     </div>
@@ -69,6 +143,63 @@ const user = Auth.getUser();
 document.getElementById("profAvatar").textContent = initials(user.full_name || user.username);
 document.getElementById("profName").textContent = user.full_name || user.username;
 document.getElementById("profMeta").textContent = `${user.username} · ${user.role}`;
+document.getElementById("currencySelect").value = user.currency || "USD";
+
+document.getElementById("currencySelect").addEventListener("change", async (e) => {
+  try {
+    const updated = await Api.updateMyCurrency(e.target.value);
+    const u = Auth.getUser();
+    u.currency = updated.currency;
+    localStorage.setItem("mt_user", JSON.stringify(u));
+    showToast("Currency updated", "success");
+  } catch (err) { showToast(err.message, "error"); }
+});
+
+if (user.role === "admin") {
+  document.getElementById("emailSettingsCard").style.display = "block";
+  (async () => {
+    try {
+      const s = await Api.getEmailSettings();
+      document.getElementById("smtp_host").value = s.host || "";
+      document.getElementById("smtp_port").value = s.port || 587;
+      document.getElementById("smtp_username").value = s.username || "";
+      document.getElementById("smtp_password_label").textContent = s.has_password ? "SMTP password / app password (already set)" : "SMTP password / app password";
+      document.getElementById("smtp_from_name").value = s.from_name || "MediCal";
+      document.getElementById("smtp_from_email").value = s.from_email || "";
+      document.getElementById("smtp_use_tls").checked = s.use_tls;
+      document.getElementById("smtp_notify_created").checked = s.notify_on_account_created;
+      document.getElementById("smtp_notify_pw").checked = s.notify_on_password_change;
+    } catch (err) { /* non-fatal */ }
+  })();
+
+  document.getElementById("smtpForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await Api.updateEmailSettings({
+        host: document.getElementById("smtp_host").value,
+        port: parseInt(document.getElementById("smtp_port").value) || 587,
+        username: document.getElementById("smtp_username").value,
+        password: document.getElementById("smtp_password").value,
+        use_tls: document.getElementById("smtp_use_tls").checked,
+        from_name: document.getElementById("smtp_from_name").value,
+        from_email: document.getElementById("smtp_from_email").value,
+        notify_on_account_created: document.getElementById("smtp_notify_created").checked,
+        notify_on_password_change: document.getElementById("smtp_notify_pw").checked,
+      });
+      showToast("Email settings saved", "success");
+      document.getElementById("smtp_password").value = "";
+    } catch (err) { showToast(err.message, "error"); }
+  });
+
+  document.getElementById("sendTestBtn").addEventListener("click", async () => {
+    const to = document.getElementById("testEmailTo").value.trim();
+    if (!to) { showToast("Enter an email address to test", "error"); return; }
+    try {
+      await Api.sendTestEmail(to);
+      showToast("Test email sent — check the inbox", "success");
+    } catch (err) { showToast(err.message, "error"); }
+  });
+}
 
 document.getElementById("pwForm").addEventListener("submit", async (e) => {
   e.preventDefault();

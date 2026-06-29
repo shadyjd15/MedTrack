@@ -17,10 +17,16 @@
         <h1>Medicines</h1>
         <div class="topbar-sub">All medicines from your prescriptions</div>
       </div>
-      <button class="btn btn-primary" id="addMedBtn">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add medicine
-      </button>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" id="importBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M5 21h14"/></svg>
+          Import CSV
+        </button>
+        <button class="btn btn-primary" id="addMedBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add medicine
+        </button>
+      </div>
     </div>
     <div class="content">
       <div class="search-bar">
@@ -66,6 +72,7 @@
           <div class="field field-spaced">
             <label>Composition / active ingredient <span class="req">*</span></label>
             <input type="text" id="m_composition" required placeholder="e.g. Paracetamol 500mg" />
+            <div id="allergyWarningBox" style="display:none;margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--red-light);color:var(--red);font-size:12.5px;font-weight:600;"></div>
           </div>
         </div>
 
@@ -163,6 +170,31 @@
   </div>
 </div>
 
+<!-- Import CSV Modal -->
+<div class="modal-overlay" id="importModal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Import medicines from CSV</h3>
+      <button class="btn btn-ghost btn-icon" onclick="document.getElementById('importModal').style.display='none'">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-soft);margin-bottom:12px;">
+        Upload a CSV of existing medication history. Visits are matched/created automatically by doctor + hospital + visit date.
+      </p>
+      <button type="button" class="btn btn-secondary btn-sm" id="downloadTemplateBtn" style="margin-bottom:14px;">⬇ Download CSV template</button>
+      <div class="field field-spaced">
+        <label>CSV file</label>
+        <input type="file" id="importFile" accept=".csv" />
+      </div>
+      <div id="importResultBox"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('importModal').style.display='none'">Close</button>
+      <button type="button" class="btn btn-primary" id="runImportBtn">Import</button>
+    </div>
+  </div>
+</div>
+
 <script src="/js/api.js"></script>
 <script src="/js/sidebar.js"></script>
 <script>
@@ -184,7 +216,8 @@ document.getElementById("resetBtn").addEventListener("click", () => { qInput.val
 function medRow(m) {
   const statusBadge = m.is_active ? `<span class="badge badge-active">Active</span>` : `<span class="badge badge-inactive">Inactive</span>`;
   const stockBadge = m.is_low_stock ? `<span class="badge badge-warning">Low stock</span>` : "";
-  const costInfo = m.cost ? ` · $${m.cost.toFixed(2)}${m.payment_method ? ` (${m.payment_method})` : ""}` : "";
+  const allergyBadge = (m.allergy_warning && m.allergy_warning.has_warning) ? `<span class="badge" style="background:var(--red-light);color:var(--red);">⚠ Allergy match: ${m.allergy_warning.matched_substance}</span>` : "";
+  const costInfo = m.cost ? ` · ${money(m.cost)}${m.payment_method ? ` (${m.payment_method})` : ""}` : "";
   const tags = (m.tags || []).map(t => `<span class="tag">${t.name}</span>`).join("");
   const refillControls = m.quantity_remaining != null ? `
     <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
@@ -196,7 +229,7 @@ function medRow(m) {
   <div class="med-row ${m.is_low_stock ? "low-stock-row" : ""}">
     <div class="med-thumb">${m.photo ? `<img src="${m.photo}"/>` : ICONS.pill}</div>
     <div class="med-main">
-      <div class="med-name">${m.name} ${statusBadge} ${stockBadge}</div>
+      <div class="med-name">${m.name} ${statusBadge} ${stockBadge} ${allergyBadge}</div>
       <div class="med-meta">${m.composition} · ${m.dose}${m.frequency ? " · "+m.frequency : ""}${costInfo}</div>
       <div class="med-meta">Dr. ${m.doctor_name || "—"} · ${m.hospital_name || "—"} · ${fmtDate(m.visit_date)}</div>
       <div class="chip-row">${tags}</div>
@@ -253,6 +286,7 @@ function openAddMed() {
   document.getElementById("medModalTitle").textContent = "Add medicine";
   document.getElementById("medForm").reset();
   document.getElementById("photoPreview").style.display = "none";
+  document.getElementById("allergyWarningBox").style.display = "none";
   document.getElementById("m_is_active").checked = true;
   document.getElementById("m_insurance_covered").checked = false;
   loadPrescriptionsIntoSelect();
@@ -291,7 +325,55 @@ async function openEditMed(id) {
 
 function closeMedModal() { document.getElementById("medModal").style.display = "none"; }
 
+document.getElementById("importBtn").addEventListener("click", () => {
+  document.getElementById("importFile").value = "";
+  document.getElementById("importResultBox").innerHTML = "";
+  document.getElementById("importModal").style.display = "flex";
+});
+
+document.getElementById("downloadTemplateBtn").addEventListener("click", downloadMedicineTemplate);
+
+document.getElementById("runImportBtn").addEventListener("click", async () => {
+  const file = document.getElementById("importFile").files[0];
+  if (!file) { showToast("Choose a CSV file first", "error"); return; }
+  const btn = document.getElementById("runImportBtn");
+  btn.disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    const result = await Api.importMedicinesCsv(fd);
+    const box = document.getElementById("importResultBox");
+    box.innerHTML = `
+      <div style="margin-top:10px;padding:10px;border-radius:8px;background:var(--surface-2);font-size:12.5px;">
+        <strong>${result.imported}</strong> medicine(s) imported, <strong>${result.skipped}</strong> skipped.
+        ${result.errors.length ? `<ul style="margin:8px 0 0;padding-left:18px;color:var(--text-soft);">${result.errors.map(e => `<li>${e}</li>`).join("")}</ul>` : ""}
+      </div>`;
+    showToast(`Imported ${result.imported} medicine(s)`, "success");
+    loadMedicines();
+  } catch (err) { showToast(err.message, "error"); }
+  finally { btn.disabled = false; }
+});
+
 document.getElementById("addMedBtn").addEventListener("click", openAddMed);
+
+let allergyCheckTimer;
+document.getElementById("m_composition").addEventListener("input", (e) => {
+  clearTimeout(allergyCheckTimer);
+  const value = e.target.value.trim();
+  const box = document.getElementById("allergyWarningBox");
+  if (!value) { box.style.display = "none"; return; }
+  allergyCheckTimer = setTimeout(async () => {
+    try {
+      const result = await Api.checkAllergy(value);
+      if (result.has_warning) {
+        box.textContent = `⚠ Allergy warning: matches "${result.matched_substance}"${result.severity ? ` (${result.severity})` : ""}${result.reaction ? ` — reaction: ${result.reaction}` : ""}`;
+        box.style.display = "block";
+      } else {
+        box.style.display = "none";
+      }
+    } catch (err) { /* non-fatal */ }
+  }, 400);
+});
 
 document.getElementById("photoDrop").addEventListener("click", () => document.getElementById("m_photo").click());
 document.getElementById("m_photo").addEventListener("change", (e) => {

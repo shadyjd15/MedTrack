@@ -24,7 +24,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-please-change-this-secret-key}
       DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME:-admin}
       DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-admin123}
-      APP_VERSION: ${APP_VERSION:-1.1.0}
+      APP_VERSION: ${APP_VERSION:-1.2.0}
       GITHUB_REPO: ${GITHUB_REPO:-}
     volumes:
       - medtrack_uploads:/app/uploads
@@ -41,7 +41,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "8085:80"
+      - "8080:80"
 
 volumes:
   medtrack_db_data:

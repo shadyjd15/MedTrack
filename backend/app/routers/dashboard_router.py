@@ -1,5 +1,5 @@
 from datetime import date
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
@@ -11,16 +11,11 @@ from ..database import get_db
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
-def _enum_val(v):
-    return v.value if hasattr(v, "value") else v
-
-
 def _med_to_out(m):
     out = schemas.MedicineOut.model_validate(m)
     out.doctor_name = m.prescription.doctor_name
     out.hospital_name = m.prescription.hospital_name
     out.visit_date = m.prescription.visit_date
-    out.payment_method = _enum_val(m.payment_method)
     out.is_low_stock = (
         m.quantity_remaining is not None and m.refill_threshold is not None
         and m.quantity_remaining <= m.refill_threshold
@@ -29,7 +24,11 @@ def _med_to_out(m):
 
 
 @router.get("/stats", response_model=schemas.DashboardStats)
-def get_stats(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+def get_stats(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(auth.get_current_user),
+    scope_user_id: Optional[str] = Depends(auth.get_scope_user_id),
+):
     presc_q = db.query(models.Prescription).options(joinedload(models.Prescription.cost_items))
     med_q = db.query(models.Medicine).join(models.Prescription).options(
         joinedload(models.Medicine.tags), joinedload(models.Medicine.prescription)
@@ -37,11 +36,19 @@ def get_stats(db: Session = Depends(get_db), user: models.User = Depends(auth.ge
     lab_q = db.query(models.LabTest).join(models.Prescription)
     vac_q = db.query(models.Vaccination)
 
-    if user.role != models.RoleEnum.admin:
-        presc_q = presc_q.filter(models.Prescription.user_id == user.id)
-        med_q = med_q.filter(models.Prescription.user_id == user.id)
-        lab_q = lab_q.filter(models.Prescription.user_id == user.id)
-        vac_q = vac_q.filter(models.Vaccination.user_id == user.id)
+    if scope_user_id is not None:
+        presc_q = presc_q.filter(models.Prescription.user_id == scope_user_id)
+        med_q = med_q.filter(models.Prescription.user_id == scope_user_id)
+        lab_q = lab_q.filter(models.Prescription.user_id == scope_user_id)
+        vac_q = vac_q.filter(models.Vaccination.user_id == scope_user_id)
+
+    # Determine which currency to display: the scoped patient's own preference,
+    # falling back to the logged-in user's (covers the admin "sees everyone" case).
+    currency = user.currency or "USD"
+    if scope_user_id is not None and scope_user_id != user.id:
+        patient = db.query(models.User).filter(models.User.id == scope_user_id).first()
+        if patient and patient.currency:
+            currency = patient.currency
 
     total_medicines = med_q.count()
     active_medicines = med_q.filter(models.Medicine.is_active == True).count()  # noqa: E712
@@ -75,7 +82,6 @@ def get_stats(db: Session = Depends(get_db), user: models.User = Depends(auth.ge
         if m.quantity_remaining is not None and m.refill_threshold is not None and m.quantity_remaining <= m.refill_threshold
     ][:8]
 
-    # Last vitals: most recent visit that has at least one vitals field set
     vitals_visit = (
         presc_q.filter(
             (models.Prescription.bp_systolic.isnot(None)) |
@@ -95,7 +101,6 @@ def get_stats(db: Session = Depends(get_db), user: models.User = Depends(auth.ge
             heart_rate=vitals_visit.heart_rate,
         )
 
-    # Spending summary for current year
     year = date.today().year
     cash_total = 0.0
     insurance_total = 0.0
@@ -103,13 +108,11 @@ def get_stats(db: Session = Depends(get_db), user: models.User = Depends(auth.ge
     for p in presc_q.filter(func.extract("year", models.Prescription.visit_date) == year).all():
         for c in p.cost_items:
             amt = c.amount
-            pm = _enum_val(c.payment_method)
-            if pm == "insurance":
+            if c.payment_method == "insurance":
                 insurance_total += amt
             else:
                 cash_total += amt
-            cat = _enum_val(c.category)
-            by_category[cat] = by_category.get(cat, 0) + amt
+            by_category[c.category] = by_category.get(c.category, 0) + amt
 
     spending = schemas.SpendingSummary(
         year=year, cash_total=cash_total, insurance_total=insurance_total,
@@ -125,7 +128,6 @@ def get_stats(db: Session = Depends(get_db), user: models.User = Depends(auth.ge
     upcoming_labs_out = []
     for lt in upcoming_labs:
         out = schemas.LabTestOut.model_validate(lt)
-        out.test_type = _enum_val(lt.test_type)
         out.doctor_name = lt.prescription.doctor_name
         out.hospital_name = lt.prescription.hospital_name
         upcoming_labs_out.append(out)
@@ -155,4 +157,5 @@ def get_stats(db: Session = Depends(get_db), user: models.User = Depends(auth.ge
         spending=spending,
         upcoming_lab_tests=upcoming_labs_out,
         upcoming_vaccinations=list(upcoming_vacs),
+        currency=currency,
     )
